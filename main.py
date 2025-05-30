@@ -1,39 +1,44 @@
+# main.py
+
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.fsm.storage.memory import MemoryStorage  # 3.x 正确导入路径
 from aiogram.types import Update
-from aiogram.dispatcher.webhook import configure_app
-from app import config
 import asyncio
+import os
 
-bot = Bot(token=config.BOT_TOKEN)
+# 配置（也可以放到 config.py 导入）
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your-bot-token")
+DOMAIN = os.getenv("DOMAIN", "https://your-app-name.onrender.com")
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
+
+bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
+dp = Dispatcher(storage=storage, bot=bot)
 
 app = FastAPI()
 
-# 把 aiogram Dispatcher 绑定到 FastAPI 路由上
-@app.post(config.WEBHOOK_PATH)
+@app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update(**data)
     await dp.process_update(update)
     return {"ok": True}
 
-# 启动时设置 webhook
 @app.on_event("startup")
 async def on_startup():
-    await bot.set_webhook(config.WEBHOOK_URL)
+    await bot.set_webhook(WEBHOOK_URL)
 
-# 关闭时删除 webhook
 @app.on_event("shutdown")
 async def on_shutdown():
     await bot.delete_webhook()
     await bot.session.close()
 
-# 示例简单命令处理器
-@dp.message_handler(commands=["start"])
+@dp.message(commands=["start"])
 async def cmd_start(message: types.Message):
     await message.answer("Hello! Bot started.")
 
-# 运行这个脚本时使用 `uvicorn main:app --host 0.0.0.0 --port 10000`
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
