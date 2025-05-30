@@ -1,4 +1,4 @@
-aiogram==3.2.0
-fastapi
-uvicorn
-apscheduler
+aiogram==3.4.1
+fastapi==0.111.0
+uvicorn==0.29.0
+apscheduler==3.10.4
