@@ -1,5 +1,5 @@
 import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "your_bot_token_here")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://yourdomain.com/webhook")
-DATABASE_PATH = "database.db"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your-telegram-bot-token")
+WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_URL = f"https://your-render-app.onrender.com{WEBHOOK_PATH}"
