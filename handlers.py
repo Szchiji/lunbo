@@ -1,46 +1,88 @@
-from aiogram import Router, types, F
-from scheduler import schedule_message, list_jobs, remove_job
+from aiogram import types
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from bot_init import dp, bot
+from scheduler import schedule_message
+from database import add_task
+from utils import parse_datetime
 
-router = Router()
-user_jobs = {}
+class ScheduleState(StatesGroup):
+    waiting_for_media = State()
+    waiting_for_text = State()
+    waiting_for_button = State()
+    waiting_for_interval = State()
+    waiting_for_start_time = State()
+    waiting_for_end_time = State()
+    confirmation = State()
 
-@router.message(F.text == "/start")
-async def start(msg: types.Message):
-    await msg.answer("欢迎使用定时发布 Bot！\n使用 /add 添加定时消息")
+@dp.message(commands=["start"])
+async def start(message: types.Message):
+    await message.answer("欢迎使用定时消息机器人！\n命令：\n/add 添加定时")
 
-@router.message(F.text.startswith("/add"))
-async def add(msg: types.Message):
-    parts = msg.text.split(" ", 2)
-    if len(parts) < 3:
-        await msg.answer("格式错误，使用：/add 2025-05-30 12:00:00 消息内容")
-        return
-    time_str = parts[1] + " " + parts[2]
-    content = parts[3] if len(parts) > 3 else "测试内容"
-    job_id = f"{msg.chat.id}_{time_str}"
+@dp.message(commands=["add"])
+async def add_schedule(message: types.Message, state: FSMContext):
+    await message.answer("请发送一张图片或视频：")
+    await state.set_state(ScheduleState.waiting_for_media)
 
-    success = schedule_message(chat_id=msg.chat.id, text=content, run_time=time_str, job_id=job_id)
-    if success:
-        await msg.answer(f"✅ 已添加定时消息：{time_str}")
+@dp.message(ScheduleState.waiting_for_media, content_types=types.ContentType.ANY)
+async def get_media(message: types.Message, state: FSMContext):
+    if not (message.photo or message.video):
+        return await message.answer("请发送图片或视频。")
+    await state.update_data(media=message)
+    await message.answer("请输入要发送的文字内容：")
+    await state.set_state(ScheduleState.waiting_for_text)
+
+@dp.message(ScheduleState.waiting_for_text)
+async def get_text(message: types.Message, state: FSMContext):
+    await state.update_data(text=message.text)
+    await message.answer("是否添加按钮？请输入按钮文字，或输入 '无' 跳过：")
+    await state.set_state(ScheduleState.waiting_for_button)
+
+@dp.message(ScheduleState.waiting_for_button)
+async def get_button(message: types.Message, state: FSMContext):
+    button_text = message.text
+    if button_text.lower() != "无":
+        await state.update_data(button=button_text)
     else:
-        await msg.answer("❌ 时间格式错误，正确格式：2025-05-30 12:00:00")
+        await state.update_data(button=None)
+    await message.answer("请输入发送间隔时间（单位：分钟）：")
+    await state.set_state(ScheduleState.waiting_for_interval)
 
-@router.message(F.text == "/list")
-async def list_scheduled(msg: types.Message):
-    jobs = list_jobs(chat_id=msg.chat.id)
-    if not jobs:
-        await msg.answer("⛔ 没有找到定时消息")
-    else:
-        await msg.answer("📋 定时任务：\n" + "\n".join(jobs))
+@dp.message(ScheduleState.waiting_for_interval)
+async def get_interval(message: types.Message, state: FSMContext):
+    if not message.text.isdigit():
+        return await message.answer("请输入有效的数字（分钟）：")
+    await state.update_data(interval=int(message.text))
+    await message.answer("请输入开始时间（格式：YYYY-MM-DD HH:MM）：")
+    await state.set_state(ScheduleState.waiting_for_start_time)
 
-@router.message(F.text.startswith("/remove"))
-async def remove(msg: types.Message):
-    parts = msg.text.split(" ", 1)
-    if len(parts) < 2:
-        await msg.answer("请提供任务 ID，例如：/remove 123")
-        return
-    job_id = parts[1]
-    removed = remove_job(job_id)
-    if removed:
-        await msg.answer("✅ 删除成功")
-    else:
-        await msg.answer("❌ 没有找到该任务")
+@dp.message(ScheduleState.waiting_for_start_time)
+async def get_start_time(message: types.Message, state: FSMContext):
+    dt = parse_datetime(message.text)
+    if not dt:
+        return await message.answer("时间格式无效，请重新输入（YYYY-MM-DD HH:MM）：")
+    await state.update_data(start_time=dt)
+    await message.answer("请输入结束时间（格式：YYYY-MM-DD HH:MM）：")
+    await state.set_state(ScheduleState.waiting_for_end_time)
+
+@dp.message(ScheduleState.waiting_for_end_time)
+async def get_end_time(message: types.Message, state: FSMContext):
+    dt = parse_datetime(message.text)
+    if not dt:
+        return await message.answer("时间格式无效，请重新输入（YYYY-MM-DD HH:MM）：")
+    await state.update_data(end_time=dt)
+    data = await state.get_data()
+    await message.answer(f"请确认以下信息：\n文字：{data['text']}\n按钮：{data.get('button', '无')}\n间隔：{data['interval']} 分钟\n开始时间：{data['start_time']}\n结束时间：{data['end_time']}\n输入 '确认' 发送，或 '取消' 放弃。")
+    await state.set_state(ScheduleState.confirmation)
+
+@dp.message(ScheduleState.confirmation)
+async def confirm(message: types.Message, state: FSMContext):
+    if message.text.lower() != "确认":
+        await state.clear()
+        return await message.answer("已取消。")
+    data = await state.get_data()
+    # 这里添加调度任务的逻辑
+    schedule_message(chat_id=message.chat.id, data=data)
+    add_task(message.chat.id, data)
+    await message.answer("✅ 定时消息已设置。")
+    await state.clear()
