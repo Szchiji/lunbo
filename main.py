@@ -1,30 +1,39 @@
 from fastapi import FastAPI, Request
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.types import Update
-from app.config import config
-from app.handlers import router
-from app.scheduler import scheduler
+from aiogram.dispatcher.webhook import configure_app
+from app import config
+import asyncio
 
-# 创建 Bot 和 Dispatcher 实例
-bot = Bot(token=config.BOT_TOKEN, parse_mode="HTML")
-dp = Dispatcher()
-dp.include_router(router)
+bot = Bot(token=config.BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
-# FastAPI 实例（Render 会寻找这个变量）
 app = FastAPI()
 
-
-@app.on_event("startup")
-async def on_startup():
-    # 清除旧 webhook 并设置新的
-    await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(f"{config.DOMAIN}/webhook")
-    scheduler.start()
-
-
-@app.post("/webhook")
+# 把 aiogram Dispatcher 绑定到 FastAPI 路由上
+@app.post(config.WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     data = await request.json()
-    update = Update.model_validate(data)
-    await dp.feed_update(bot, update)  # Aiogram 3 正确的处理更新方式
+    update = Update(**data)
+    await dp.process_update(update)
     return {"ok": True}
+
+# 启动时设置 webhook
+@app.on_event("startup")
+async def on_startup():
+    await bot.set_webhook(config.WEBHOOK_URL)
+
+# 关闭时删除 webhook
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot.delete_webhook()
+    await bot.session.close()
+
+# 示例简单命令处理器
+@dp.message_handler(commands=["start"])
+async def cmd_start(message: types.Message):
+    await message.answer("Hello! Bot started.")
+
+# 运行这个脚本时使用 `uvicorn main:app --host 0.0.0.0 --port 10000`
