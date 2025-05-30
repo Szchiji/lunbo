@@ -1,15 +1,12 @@
-# main.py
-
+import os
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
-from aiogram.fsm.storage.memory import MemoryStorage  # 3.x 正确导入路径
+from aiogram.filters import Command
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Update
-import asyncio
-import os
 
-# 配置（也可以放到 config.py 导入）
-BOT_TOKEN = os.getenv("BOT_TOKEN", "your-bot-token")
-DOMAIN = os.getenv("DOMAIN", "https://your-app-name.onrender.com")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "你的机器人TOKEN")
+DOMAIN = os.getenv("DOMAIN", "https://你的域名")
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
 
@@ -28,17 +25,19 @@ async def telegram_webhook(request: Request):
 
 @app.on_event("startup")
 async def on_startup():
+    # 设置 webhook 地址
     await bot.set_webhook(WEBHOOK_URL)
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    # 关闭时删除 webhook 和关闭会话
     await bot.delete_webhook()
     await bot.session.close()
 
-@dp.message(commands=["start"])
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Hello! Bot started.")
+    await message.answer("你好，机器人已启动！")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=10000)
