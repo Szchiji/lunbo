@@ -1,20 +1,23 @@
+import uvicorn
 from fastapi import FastAPI, Request
-import asyncio
-from bot import dp, bot
-from config import WEBHOOK_PATH, WEBHOOK_URL
+from aiogram.types import Update
+from bot_init import dp, bot
+from handlers import router
+from webhook import setup_webhook
 
 app = FastAPI()
 
+dp.include_router(router)
+
 @app.on_event("startup")
 async def on_startup():
-    await bot.set_webhook(WEBHOOK_URL)
+    await setup_webhook()
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    await bot.delete_webhook()
-
-@app.post(WEBHOOK_PATH)
-async def webhook(request: Request):
-    update = await request.json()
+@app.post("/webhook")
+async def webhook_handler(request: Request):
+    update = Update.model_validate(await request.json())
     await dp.feed_update(bot, update)
     return {"ok": True}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=10000)
