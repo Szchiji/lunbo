@@ -20,7 +20,7 @@ app = FastAPI()
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update(**data)
-    await dp.process_update(update)
+    await dp.update.process_update(update)  # 这里改为 dp.update.process_update
     return {"ok": True}
 
 @app.on_event("startup")
