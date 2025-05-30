@@ -1,4 +1,4 @@
-aiogram==3.0.0
+aiogram==3.0.0b7
 fastapi
-uvicorn
+uvicorn[standard]
 apscheduler
