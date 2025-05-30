@@ -1,6 +1,4 @@
 import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # 设置为环境变量
-WEBHOOK_HOST = "https://lunbo.onrender.com"
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "你的 Bot Token")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://lunbo.onrender.com/webhook")
