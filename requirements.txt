@@ -1,3 +1,4 @@
 aiogram==3.0.0
-APScheduler==3.10.1
 aiohttp
+APScheduler==3.10.1
+uvicorn[standard]
