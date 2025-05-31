@@ -1,5 +1,5 @@
-Flask==2.3.3
 python-telegram-bot==13.15
-python-dotenv
+Flask
 schedule
+python-dotenv
 pytz
