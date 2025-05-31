@@ -1,45 +1,37 @@
 import os
-from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Update
+from aiogram.types import FSInputFile
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import uvicorn
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "你的机器人TOKEN")
-DOMAIN = os.getenv("DOMAIN", "https://你的域名")  # 例如 https://yourdomain.com
-WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = DOMAIN + WEBHOOK_PATH
+from database import create_tables
+from scheduler import scheduler, schedule_tasks
+from handlers import add_task, list_tasks, delete_task, edit_task
 
-bot = Bot(token=BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage, bot=bot)
-
+TOKEN = os.getenv("BOT_TOKEN")
+bot = Bot(token=TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
 app = FastAPI()
 
-@app.post(WEBHOOK_PATH)
-async def telegram_webhook(request: Request):
-    data = await request.json()
-    update = Update(**data)
-    await dp.feed_update(bot, update)  # 这里是aiogram 3.x的正确写法
-    return {"ok": True}
+# 注册处理器
+dp.include_routers(add_task.router, list_tasks.router, delete_task.router, edit_task.router)
 
 @app.on_event("startup")
-async def on_startup():
-    # 设置 webhook 地址，替换成你自己的公网可访问地址
-    await bot.set_webhook(WEBHOOK_URL)
-    print(f"Webhook set to {WEBHOOK_URL}")
+async def startup():
+    create_tables()
+    schedule_tasks(bot)
+    scheduler.start()
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
+    await bot.set_webhook(webhook_url)
+    print(f"✅ Webhook 设置为: {webhook_url}")
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    # 关闭时删除 webhook 和关闭bot会话
-    await bot.delete_webhook()
-    await bot.session.close()
-    print("Webhook deleted and bot session closed.")
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer("你好，机器人已启动！")
+@app.post("/webhook")
+async def telegram_webhook(req: Request):
+    update = types.Update(**await req.json())
+    await dp.feed_update(bot, update)
+    return JSONResponse({"status": "ok"})
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=10000)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
