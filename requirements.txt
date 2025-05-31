@@ -1,5 +1,5 @@
 Flask==2.3.3
 python-telegram-bot==13.15
-python-dotenv==1.0.1
-schedule==1.2.1
-pytz==2024.1
+python-dotenv
+schedule
+pytz
