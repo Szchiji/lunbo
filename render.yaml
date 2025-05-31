@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: telegram-rotating-bot-pro
+    name: telegram-rotating-bot
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
