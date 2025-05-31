@@ -1,7 +1,6 @@
 import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import FSInputFile
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -15,8 +14,13 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 app = FastAPI()
 
-# 注册处理器
-dp.include_routers(add_task.router, list_tasks.router, delete_task.router, edit_task.router)
+# 注册消息处理函数
+dp.message.register(add_task.start, commands="start")
+dp.message.register(add_task.process_task, state=add_task.TaskStates.waiting_for_task)
+dp.message.register(list_tasks.list_tasks, commands="list")
+dp.message.register(delete_task.delete_task, commands="delete")
+dp.message.register(edit_task.start_edit, commands="edit")
+dp.message.register(edit_task.process_edit, state=edit_task.EditStates.waiting_for_new_task)
 
 @app.on_event("startup")
 async def startup():
