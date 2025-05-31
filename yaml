@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: telegram-rotating-bot
+    env: python
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn bot:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: your_bot_token_here
+      - key: CHAT_ID
+        value: your_chat_id_here
+      - key: ADMIN_ID
+        value: your_admin_user_id_here
+      - key: TIMEZONE
+        value: Asia/Shanghai
