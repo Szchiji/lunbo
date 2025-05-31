@@ -1,25 +1,21 @@
-from aiogram import Router, F
-from aiogram.types import Message
+from aiogram import types, F
 from aiogram.fsm.context import FSMContext
-from states import AddTaskState
-from database import add_task
-import os
+from aiogram.fsm.state import StatesGroup, State
+from database import add_task_to_db
 
-router = Router()
+class TaskStates(StatesGroup):
+    waiting_for_task = State()
 
-@router.message(F.text == "/addtask")
-async def start_add(message: Message, state: FSMContext):
-    await message.answer("请发送图片或视频")
-    await state.set_state(AddTaskState.waiting_for_media)
+async def start(message: types.Message, state: FSMContext):
+    await message.answer("请输入你要添加的任务内容：")
+    await state.set_state(TaskStates.waiting_for_task)
 
-@router.message(AddTaskState.waiting_for_media, F.photo | F.video)
-async def receive_media(message: Message, state: FSMContext):
-    media_type = "photo" if message.photo else "video"
-    file = message.photo[-1] if message.photo else message.video
-    file_path = f"media/{file.file_id}.jpg"
-    await message.bot.download(file, destination=file_path)
-    await state.update_data(media_type=media_type, media_path=file_path, chat_id=message.chat.id)
-    await message.answer("请输入文字说明")
-    await state.set_state(AddTaskState.waiting_for_caption)
+async def process_task(message: types.Message, state: FSMContext):
+    task_text = message.text.strip()
+    if not task_text:
+        await message.answer("任务内容不能为空，请重新输入。")
+        return
+    add_task_to_db(message.from_user.id, task_text)
+    await message.answer(f"✅ 任务已添加：{task_text}")
+    await state.clear()
 
-# 后续状态处理略，完整版本可继续添加
