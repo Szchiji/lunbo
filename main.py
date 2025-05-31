@@ -11,16 +11,20 @@ import json
 from dotenv import load_dotenv
 from uuid import uuid4
 
-# 初始化环境
+# 加载环境变量
 load_dotenv()
+
 app = Flask(__name__)
 
 # 配置
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-PORT = int(os.getenv('PORT', 10000))
-DATA_FILE = '/tmp/scheduled_messages.json' if os.getenv('RENDER') else 'scheduled_messages.json'
 IS_RENDER = os.getenv('RENDER', '').lower() == 'true'
+DATA_FILE = '/tmp/scheduled_messages.json' if IS_RENDER else 'scheduled_messages.json'
+
+# 修复 PORT 环境变量为空时报错
+raw_port = os.getenv('PORT')
+PORT = int(raw_port) if raw_port and raw_port.isdigit() else 10000
 
 # 消息类型
 class MessageType:
@@ -32,7 +36,6 @@ class ButtonType:
     URL = "url"
     CALLBACK = "callback"
 
-# 初始化机器人
 bot = Bot(token=TOKEN)
 dispatcher = None
 
@@ -64,7 +67,6 @@ def create_message_template():
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M')
     }
 
-# 消息发送
 def send_rich_message(chat_id, message_data):
     try:
         buttons = []
@@ -73,43 +75,18 @@ def send_rich_message(chat_id, message_data):
                 buttons.append(InlineKeyboardButton(btn['text'], url=btn['data']))
             else:
                 buttons.append(InlineKeyboardButton(btn['text'], callback_data=btn['data']))
-        
+
         reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-        
+
         if message_data['message_type'] == MessageType.PHOTO:
-            content = message_data['content']
-            if message_data.get('file_path'):
-                with open(message_data['file_path'], 'rb') as photo:
-                    bot.send_photo(
-                        chat_id=chat_id,
-                        photo=photo,
-                        caption=content,
-                        reply_markup=reply_markup
-                    )
-            else:
-                bot.send_photo(
-                    chat_id=chat_id,
-                    photo=content,
-                    caption=content if content else None,
-                    reply_markup=reply_markup
-                )
-            return True
+            with open(message_data['file_path'], 'rb') as photo:
+                bot.send_photo(chat_id=chat_id, photo=photo, caption=message_data['content'], reply_markup=reply_markup)
         elif message_data['message_type'] == MessageType.VIDEO:
-            content = message_data['content']
-            bot.send_video(
-                chat_id=chat_id,
-                video=content,
-                caption=message_data.get('content'),
-                reply_markup=reply_markup
-            )
-            return True
+            with open(message_data['file_path'], 'rb') as video:
+                bot.send_video(chat_id=chat_id, video=video, caption=message_data['content'], reply_markup=reply_markup)
         else:
-            bot.send_message(
-                chat_id=chat_id,
-                text=message_data['content'],
-                reply_markup=reply_markup
-            )
-            return True
+            bot.send_message(chat_id=chat_id, text=message_data['content'], reply_markup=reply_markup)
+        return True
     except Exception as e:
         print(f"发送失败: {e}")
         return False
@@ -127,7 +104,7 @@ def check_due_messages():
                     if hours_since_start % 3 == 0:
                         send_rich_message(msg['chat_id'], msg)
             except Exception as e:
-                print(f"检查消息失败: {e}")
+                print(f"检查失败: {e}")
 
 def schedule_worker():
     print("⏰ 定时任务系统启动")
@@ -145,25 +122,20 @@ def init_scheduler():
                     end = datetime.strptime(msg['end_time'], '%Y-%m-%d %H:%M')
                     current = start
                     while current <= end:
-                        def make_send_job(message, send_time):
-                            def job():
-                                print(f"定时发送消息: {send_time}")
-                                send_rich_message(message['chat_id'], message)
+                        def make_job(m, t):
+                            def job(): send_rich_message(m['chat_id'], m)
                             return job
-                        schedule.every().day.at(current.strftime('%H:%M')).do(
-                            make_send_job(msg, current)
-                        )
+                        schedule.every().day.at(current.strftime('%H:%M')).do(make_job(msg, current))
                         current += timedelta(hours=3)
                 except Exception as e:
-                    print(f"初始化定时任务失败: {e}")
+                    print(f"调度失败: {e}")
         Thread(target=schedule_worker, daemon=True).start()
 
-# Web 路由
 @app.route('/')
 def home():
     if IS_RENDER:
         check_due_messages()
-    return "🤖 机器人运行中 | /help 查看指令"
+    return "🤖 机器人运行中"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -180,115 +152,51 @@ def ping():
 
 # 指令处理
 def help_command(update: Update, context: CallbackContext):
-    help_text = """
-📚 定时消息系统使用指南:
-
-1. 添加纯文本定时消息(可带按钮):
-/addschedule <开始日期> <开始时间> <结束日期> <结束时间> <消息内容>
-例: /addschedule 2025-06-01 09:00 2025-06-07 18:00 每日提醒
-
-2. 添加媒体消息(图片/视频):
-先发送媒体文件到聊天，然后回复该消息:
-/addschedule <开始日期> <开始时间> <结束日期> <结束时间>
-
-3. 添加按钮:
-/addbutton <消息ID> <url/callback> <按钮文本> <链接或回调数据>
-
-其他命令:
-/listschedule - 查看所有定时任务
-/deleteschedule <ID> - 删除任务
-"""
-    update.message.reply_text(help_text)
+    update.message.reply_text("📚 使用 /addschedule、/listschedule、/deleteschedule 来管理定时消息")
 
 def add_schedule(update: Update, context: CallbackContext):
     try:
-        reply_to = update.message.reply_to_message
-        msg_type = MessageType.TEXT
-        content = ""
-        file_path = ""
-        if reply_to:
-            if reply_to.photo:
-                msg_type = MessageType.PHOTO
-                content = reply_to.photo[-1].file_id
-            elif reply_to.video:
-                msg_type = MessageType.VIDEO
-                content = reply_to.video.file_id
-            content = reply_to.caption if reply_to.caption else content
         args = context.args
-        if not args or len(args) < 4:
-            raise ValueError("参数不足，格式: /addschedule 开始日期 开始时间 结束日期 结束时间 [消息]")
+        if len(args) < 4:
+            update.message.reply_text("用法: /addschedule <开始日期> <开始时间> <结束日期> <结束时间> <消息内容>")
+            return
         start_date, start_time, end_date, end_time = args[:4]
-        if msg_type == MessageType.TEXT and len(args) >= 5:
-            content = ' '.join(args[4:])
+        content = ' '.join(args[4:]) if len(args) > 4 else '定时消息'
         new_msg = create_message_template()
         new_msg.update({
             'chat_id': update.message.chat_id,
             'start_time': f"{start_date} {start_time}",
             'end_time': f"{end_date} {end_time}",
-            'message_type': msg_type,
-            'content': content,
-            'file_path': file_path
+            'message_type': MessageType.TEXT,
+            'content': content
         })
         scheduled_messages.append(new_msg)
         save_messages(scheduled_messages)
         init_scheduler()
-        update.message.reply_text(f"✅ 定时消息已添加 (ID: {new_msg['id']})")
+        update.message.reply_text(f"✅ 已添加消息 (ID: {new_msg['id']})")
     except Exception as e:
-        update.message.reply_text(f"❌ 错误: {str(e)}")
+        update.message.reply_text(f"❌ 错误: {e}")
 
 def list_schedule(update: Update, context: CallbackContext):
     if not scheduled_messages:
-        update.message.reply_text("ℹ️ 没有定时消息")
+        update.message.reply_text("暂无定时任务")
         return
-    response = ["📅 定时消息列表:"]
-    for msg in scheduled_messages:
-        status = "✅ 活跃" if msg.get('active', True) else "❌ 停用"
-        response.append(
-            f"ID: {msg['id']}\n"
-            f"时间: {msg['start_time']} 至 {msg['end_time']}\n"
-            f"状态: {status}\n"
-            f"类型: {msg['message_type']}\n"
-            f"内容: {msg['content'][:50]}{'...' if len(msg['content']) > 50 else ''}\n"
-        )
+    response = [f"{m['id']}: {m['start_time']} - {m['end_time']} 内容: {m['content'][:30]}" for m in scheduled_messages]
     update.message.reply_text('\n'.join(response))
 
 def delete_schedule(update: Update, context: CallbackContext):
     if not context.args:
-        update.message.reply_text("❌ 需要提供消息ID")
+        update.message.reply_text("请提供 ID")
         return
     msg_id = context.args[0]
     global scheduled_messages
-    initial_count = len(scheduled_messages)
-    scheduled_messages = [msg for msg in scheduled_messages if msg['id'] != msg_id]
-    if len(scheduled_messages) < initial_count:
-        save_messages(scheduled_messages)
-        init_scheduler()
-        update.message.reply_text(f"✅ 消息 {msg_id} 已删除")
+    before = len(scheduled_messages)
+    scheduled_messages = [m for m in scheduled_messages if m['id'] != msg_id]
+    save_messages(scheduled_messages)
+    if len(scheduled_messages) < before:
+        update.message.reply_text("✅ 删除成功")
     else:
-        update.message.reply_text("❌ 未找到该ID的消息")
-
-def add_button(update: Update, context: CallbackContext):
-    try:
-        if not context.args or len(context.args) < 4:
-            update.message.reply_text("❌ 格式: /addbutton <消息ID> <url/callback> <按钮文本> <链接或回调数据>")
-            return
-        msg_id, btn_type, btn_text = context.args[:3]
-        btn_data = ' '.join(context.args[3:])
-        if btn_type not in [ButtonType.URL, ButtonType.CALLBACK]:
-            raise ValueError("按钮类型必须是 'url' 或 'callback'")
-        for msg in scheduled_messages:
-            if msg['id'] == msg_id:
-                msg['buttons'].append({
-                    'type': btn_type,
-                    'text': btn_text,
-                    'data': btn_data
-                })
-                save_messages(scheduled_messages)
-                update.message.reply_text(f"✅ 按钮已添加到消息 {msg_id}")
-                return
-        update.message.reply_text("❌ 未找到该ID的消息")
-    except Exception as e:
-        update.message.reply_text(f"❌ 错误: {str(e)}")
+        update.message.reply_text("❌ 未找到该消息")
 
 def run_flask():
     app.run(host='0.0.0.0', port=PORT)
@@ -300,20 +208,16 @@ def main():
     dispatcher.add_handler(CommandHandler("start", help_command))
     dispatcher.add_handler(CommandHandler("help", help_command))
     dispatcher.add_handler(CommandHandler("addschedule", add_schedule))
-    dispatcher.add_handler(CommandHandler("addbutton", add_button))
     dispatcher.add_handler(CommandHandler("listschedule", list_schedule))
     dispatcher.add_handler(CommandHandler("deleteschedule", delete_schedule))
     init_scheduler()
     if IS_RENDER and os.getenv('WEBHOOK_URL'):
         updater.bot.set_webhook(os.getenv('WEBHOOK_URL'))
-        print(f"Webhook 设置为: {os.getenv('WEBHOOK_URL')}")
     if IS_RENDER:
-        print("🚀 在 Render 环境中启动")
         Thread(target=run_flask).start()
         updater.start_polling()
     else:
-        print("💻 在本地环境中启动")
-        app.run(host='0.0.0.0', port=PORT)
+        run_flask()
 
 if __name__ == '__main__':
     main()
