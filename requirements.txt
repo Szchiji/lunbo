@@ -1,4 +1,4 @@
 python-telegram-bot==20.3
 pytz==2023.3
-uvicorn==0.29.0
-fastapi==0.109.2  # 如果你使用 FastAPI
+uvicorn==0.29.0  # 只有当你使用 FastAPI 时才需要
+fastapi==0.109.2  # 只有当你使用 FastAPI 时才需要
