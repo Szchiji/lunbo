@@ -1,6 +1,4 @@
-aiogram==3.*
-fastapi
-uvicorn[standard]
-apscheduler
-aiofiles
-python-multipart
+aiogram==3.0.0b7
+fastapi==0.95.2
+uvicorn[standard]==0.23.1
+apscheduler==3.10.4
