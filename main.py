@@ -20,7 +20,7 @@ app = FastAPI()
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update(**data)
-    await dp.feed_update(update)  # 这里是aiogram 3.x的正确写法
+    await dp.feed_update(bot, update)  # 这里是aiogram 3.x的正确写法
     return {"ok": True}
 
 @app.on_event("startup")
