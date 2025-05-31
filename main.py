@@ -1,15 +1,15 @@
 import os
-from flask import Flask, request
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Dispatcher, CommandHandler, CallbackContext
-import schedule
+import json
 import time
+import schedule
+import pytz
+from uuid import uuid4
 from threading import Thread
 from datetime import datetime, timedelta
-import pytz
-import json
+from flask import Flask, request
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext
 from dotenv import load_dotenv
-from uuid import uuid4
 
 # 加载环境变量
 load_dotenv()
@@ -26,6 +26,7 @@ DATA_FILE = '/tmp/scheduled_messages.json' if IS_RENDER else 'scheduled_messages
 raw_port = os.getenv('PORT')
 PORT = int(raw_port) if raw_port and raw_port.isdigit() else 10000
 
+# 消息类型
 class MessageType:
     TEXT = "text"
     PHOTO = "photo"
@@ -36,7 +37,7 @@ class ButtonType:
     CALLBACK = "callback"
 
 bot = Bot(token=TOKEN)
-dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
+dispatcher = None
 
 # 数据持久化
 def load_messages():
@@ -90,6 +91,7 @@ def send_rich_message(chat_id, message_data):
         print(f"发送失败: {e}")
         return False
 
+# 定时任务系统
 def check_due_messages():
     now = datetime.now(pytz.utc)
     for msg in scheduled_messages:
@@ -99,8 +101,7 @@ def check_due_messages():
                 end = datetime.strptime(msg['end_time'], '%Y-%m-%d %H:%M').replace(tzinfo=pytz.utc)
                 if start <= now <= end:
                     hours_since_start = (now - start).total_seconds() / 3600
-                    # 判断是否到了发送间隔，示例固定3小时一次
-                    if abs(hours_since_start % 3) < 0.0167:  # 0.0167小时约1分钟误差
+                    if hours_since_start % 3 == 0:
                         send_rich_message(msg['chat_id'], msg)
             except Exception as e:
                 print(f"检查失败: {e}")
@@ -112,23 +113,23 @@ def schedule_worker():
         time.sleep(1)
 
 def init_scheduler():
-    schedule.clear()
-    for msg in scheduled_messages:
-        if msg.get('active', True):
-            try:
-                start = datetime.strptime(msg['start_time'], '%Y-%m-%d %H:%M')
-                end = datetime.strptime(msg['end_time'], '%Y-%m-%d %H:%M')
-                current = start
-                while current <= end:
-                    def make_job(m, t):
-                        def job():
-                            send_rich_message(m['chat_id'], m)
-                        return job
-                    schedule.every().day.at(current.strftime('%H:%M')).do(make_job(msg, current))
-                    current += timedelta(hours=3)
-            except Exception as e:
-                print(f"调度失败: {e}")
-    Thread(target=schedule_worker, daemon=True).start()
+    if not IS_RENDER:
+        schedule.clear()
+        for msg in scheduled_messages:
+            if msg.get('active', True):
+                try:
+                    start = datetime.strptime(msg['start_time'], '%Y-%m-%d %H:%M')
+                    end = datetime.strptime(msg['end_time'], '%Y-%m-%d %H:%M')
+                    current = start
+                    while current <= end:
+                        def make_job(m, t):
+                            def job(): send_rich_message(m['chat_id'], m)
+                            return job
+                        schedule.every().day.at(current.strftime('%H:%M')).do(make_job(msg, current))
+                        current += timedelta(hours=3)
+                except Exception as e:
+                    print(f"调度失败: {e}")
+        Thread(target=schedule_worker, daemon=True).start()
 
 @app.route('/')
 def home():
@@ -138,9 +139,10 @@ def home():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    json_data = request.get_json(force=True)
+    json_data = request.get_json()
     update = Update.de_json(json_data, bot)
-    dispatcher.process_update(update)
+    if dispatcher:
+        dispatcher.process_update(update)
     return 'OK'
 
 @app.route('/ping')
@@ -148,9 +150,9 @@ def ping():
     check_due_messages()
     return "PONG"
 
-# 机器人命令处理
+# 指令处理
 def help_command(update: Update, context: CallbackContext):
-    update.message.reply_text("📚 使用 /addschedule、/listschedule、/deleteschedule 来管理定时消息")
+    update.message.reply_text("📚 使用 /addschedule、/listschedule、/deleteschedule、/editschedule 来管理定时消息")
 
 def add_schedule(update: Update, context: CallbackContext):
     try:
@@ -196,22 +198,49 @@ def delete_schedule(update: Update, context: CallbackContext):
     else:
         update.message.reply_text("❌ 未找到该消息")
 
-dispatcher.add_handler(CommandHandler("start", help_command))
-dispatcher.add_handler(CommandHandler("help", help_command))
-dispatcher.add_handler(CommandHandler("addschedule", add_schedule))
-dispatcher.add_handler(CommandHandler("listschedule", list_schedule))
-dispatcher.add_handler(CommandHandler("deleteschedule", delete_schedule))
+def edit_schedule(update: Update, context: CallbackContext):
+    try:
+        args = context.args
+        if len(args) < 2:
+            update.message.reply_text("用法: /editschedule <消息ID> <字段>=<新值> ...")
+            return
+        msg_id = args[0]
+        updates = args[1:]
+        msg = next((m for m in scheduled_messages if m['id'] == msg_id), None)
+        if not msg:
+            update.message.reply_text("未找到指定的消息")
+            return
+        for item in updates:
+            if '=' in item:
+                key, value = item.split('=', 1)
+                if key in msg:
+                    msg[key] = value
+        save_messages(scheduled_messages)
+        update.message.reply_text(f"✅ 消息 {msg_id} 已更新")
+    except Exception as e:
+        update.message.reply_text(f"❌ 错误: {e}")
+
+def run_flask():
+    app.run(host='0.0.0.0', port=PORT)
 
 def main():
-    webhook_url = os.getenv('WEBHOOK_URL')
-    if IS_RENDER:
-        if not webhook_url:
-            raise RuntimeError("请设置环境变量 WEBHOOK_URL")
-        # 设置Webhook，地址必须是公网可访问的
-        bot.delete_webhook()
-        bot.set_webhook(webhook_url)
+    global dispatcher
+    updater = Updater(TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+    dispatcher.add_handler(CommandHandler("start", help_command))
+    dispatcher.add_handler(CommandHandler("help", help_command))
+    dispatcher.add_handler(CommandHandler("addschedule", add_schedule))
+    dispatcher.add_handler(CommandHandler("listschedule", list_schedule))
+    dispatcher.add_handler(CommandHandler("deleteschedule", delete_schedule))
+    dispatcher.add_handler(CommandHandler("editschedule", edit_schedule))
     init_scheduler()
-    app.run(host='0.0.0.0', port=PORT)
+    if IS_RENDER and os.getenv('WEBHOOK_URL'):
+        updater.bot.set_webhook(os.getenv('WEBHOOK_URL'))
+    if IS_RENDER:
+        Thread(target=run_flask).start()
+        updater.start_polling()
+    else:
+        run_flask()
 
 if __name__ == '__main__':
     main()
