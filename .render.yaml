@@ -1,9 +1,9 @@
 services:
   - type: web
     name: telegram-scheduler-bot
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 main.py
+    startCommand: python main.py
     envVars:
       - key: TELEGRAM_TOKEN
         sync: false
@@ -12,4 +12,4 @@ services:
       - key: WEBHOOK_URL
         sync: false
       - key: RENDER
-        value: true
+        value: "true"
