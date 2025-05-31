@@ -1,4 +1,6 @@
+aiogram==3.*
 fastapi
-uvicorn
-APScheduler
-aiogram==3.0.0b7
+uvicorn[standard]
+apscheduler
+aiofiles
+python-multipart
