@@ -1,39 +1,45 @@
 import sqlite3
 
+DB_NAME = "tasks.db"
+
 def create_tables():
-    with sqlite3.connect("tasks.db") as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER,
-                media_type TEXT,
-                media_path TEXT,
-                caption TEXT,
-                buttons TEXT,
-                start_time TEXT,
-                stop_time TEXT,
-                interval INTEGER
-            )
-        """)
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            task_text TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-def add_task(data: dict):
-    with sqlite3.connect("tasks.db") as conn:
-        conn.execute("""
-            INSERT INTO tasks (chat_id, media_type, media_path, caption, buttons, start_time, stop_time, interval)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            data["chat_id"], data["media_type"], data["media_path"], data["caption"],
-            data["buttons"], data["start_time"], data["stop_time"], data["interval"]
-        ))
+def add_task_to_db(user_id: int, task_text: str):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO tasks (user_id, task_text) VALUES (?, ?)", (user_id, task_text))
+    conn.commit()
+    conn.close()
 
-def get_tasks():
-    with sqlite3.connect("tasks.db") as conn:
-        return conn.execute("SELECT * FROM tasks").fetchall()
+def get_tasks_by_user(user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, task_text FROM tasks WHERE user_id=?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
-def delete_task(task_id: int):
-    with sqlite3.connect("tasks.db") as conn:
-        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+def delete_task_from_db(task_id: int, user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tasks WHERE id=? AND user_id=?", (task_id, user_id))
+    conn.commit()
+    conn.close()
 
-def update_task(task_id: int, field: str, value):
-    with sqlite3.connect("tasks.db") as conn:
-        conn.execute(f"UPDATE tasks SET {field} = ? WHERE id = ?", (value, task_id))
+def update_task_in_db(task_id: int, user_id: int, new_text: str):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tasks SET task_text=? WHERE id=? AND user_id=?", (new_text, task_id, user_id))
+    conn.commit()
+    conn.close()
