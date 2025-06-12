@@ -50,7 +50,8 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         await show_schedule_detail(update, context, schedule_id)
     elif data == "schedule_list":
         await show_schedule_list(update, context)
-    elif data.startswith("edit_"):
+    elif data.startswith("edit_") and not any(data.startswith(f"edit_{t}_") for t in ["text", "media", "button", "repeat", "time_period", "start_date", "end_date"]):
+        # 普通编辑（进入详情页）
         schedule_id = int(data.split("_")[1])
         await show_schedule_detail(update, context, schedule_id)
     elif data.startswith("toggle_status_"):
