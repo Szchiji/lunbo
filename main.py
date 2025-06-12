@@ -77,8 +77,7 @@ if __name__ == "__main__":
         asyncio.run(app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            webhook_url=WEBHOOK_URL,
-            webhook_path=WEBHOOK_PATH
+            webhook_url=WEBHOOK_URL
         ))
     else:
         # 轮询模式（本地开发或后台Worker）
