@@ -1,0 +1,6 @@
+default:
+  welcome_message: "欢迎 {user} 加入本群！"
+  checkin_success: "{user} 打卡成功，继续加油！"
+  checkin_fail: "只有会员才能打卡，请联系管理员。"
+  setmsg_success: "{key} 设置成功。"
+groups: []
