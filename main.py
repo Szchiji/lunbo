@@ -6,7 +6,9 @@ from telegram.ext import (
 )
 # 引入你的自定义插件
 from plugins.main_menu import show_main_menu, handle_menu_button
-from plugins.members import add_member_cmd, remove_member_cmd, list_members_cmd
+from plugins.members import (
+    add_member_cmd, remove_member_cmd, list_members_cmd, is_admin
+)
 from plugins.auto_reply_wizard import (
     auto_reply_entry, auto_reply_step, auto_reply_media_choice,
     list_auto_replies, toggle_reply_cmd, del_reply_cmd, auto_reply_handler
@@ -38,8 +40,12 @@ else:
 
 # /start 指令
 async def start(update, context):
-    await update.message.reply_text("欢迎使用小微机器人！")
+    await update.message.reply_text("欢迎小微机器人！")
     await show_main_menu(update, context)
+
+# 获取自己的 Telegram 用户ID
+async def myid(update, context):
+    await update.message.reply_text(f"你的用户ID是：{update.effective_user.id}")
 
 def build_app():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -60,13 +66,15 @@ def build_app():
     app.add_handler(CallbackQueryHandler(schedule_media_choice, pattern="^sch_media_"))
     app.add_handler(CommandHandler("checkin", checkin))
     app.add_handler(CommandHandler("checkin_stats", checkin_stats))
+    app.add_handler(CommandHandler("myid", myid))
     app.add_handler(ChatMemberHandler(welcome_handler, ChatMemberHandler.CHAT_MEMBER))
+    # 先注册自动回复触发
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), auto_reply_handler))
     # 多轮自动回复和定时消息设置
     app.add_handler(MessageHandler(filters.TEXT & filters.User(), auto_reply_step))
     app.add_handler(MessageHandler(filters.TEXT & filters.User(), schedule_step))
+    # 最后注册菜单按钮的兜底 handler
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_menu_button))
-    # 自动回复触发
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), auto_reply_handler))
     return app
 
 if __name__ == "__main__":
