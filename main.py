@@ -11,7 +11,7 @@ PORT = int(os.environ.get('PORT', 10000))  # Render 会自动分配端口
 from plugins.main_menu import show_main_menu  # ...省略其它引入...
 
 async def start(update, context):
-    await update.message.reply_text("欢迎使用小微机器人！")
+    await update.message.reply_text("欢迎使用！")
     await show_main_menu(update, context)
 
 app = ApplicationBuilder()\
