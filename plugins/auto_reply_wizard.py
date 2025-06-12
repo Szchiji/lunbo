@@ -24,6 +24,8 @@ async def add_keyword_cmd(update, context, *args, **kwargs):
 async def remove_keyword_cmd(update, context, *args, **kwargs):
     await update.message.reply_text("删除关键词功能待实现。")
 
-# 新增入口占位
 async def auto_reply_entry(update, context, *args, **kwargs):
     await update.message.reply_text("自动回复入口功能待实现。")
+
+async def auto_reply_step(update, context, *args, **kwargs):
+    await update.message.reply_text("自动回复步骤功能待实现。")
