@@ -54,7 +54,7 @@ def main():
     async def on_startup(app):
         await init_db()
         logging.info("数据库初始化完成")
-        schedule_broadcast_jobs(application, GROUP_IDS)
+        schedule_broadcast_jobs(app, GROUP_IDS)
 
     application.post_init = on_startup
     application.run_webhook(
