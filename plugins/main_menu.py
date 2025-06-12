@@ -12,46 +12,37 @@ from plugins.schedule_msg_wizard import (
     delete_last_schedule_cmd
 )
 
-# 菜单定义
 MAIN_MENU_KEYBOARD = [
     ["会员管理", "自动回复"],
     ["定时消息", "管理员动态管理"],
     ["权限控制"]
 ]
-# 自动回复主菜单
 AUTO_REPLY_MENU_KEYBOARD = [
     ["管理自动回复关键词", "添加关键词", "删除关键词"],
     ["所有关键词列表", "返回主菜单"]
 ]
-# 自动回复-管理关键词
 MANAGE_KEYWORD_MENU_KEYBOARD = [
     ["精准关键词列表", "包含关键词列表"],
     ["返回自动回复菜单"]
 ]
-# 自动回复-添加关键词
 ADD_KEYWORD_MENU_KEYBOARD = [
     ["添加精准关键词", "添加包含关键词"],
     ["返回自动回复菜单"]
 ]
-# 自动回复-删除关键词
 DELETE_KEYWORD_MENU_KEYBOARD = [
     ["删除精准关键词", "删除包含关键词"],
     ["返回自动回复菜单"]
 ]
-# 定时消息主菜单
 SCHEDULE_MENU_KEYBOARD = [
     ["删除上一条", "管理定时", "查看列表"],
     ["开始/暂停", "开始时间", "结束时间"],
     ["支持文本/图片", "支持精准发送"],
     ["返回主菜单"]
 ]
-
-# 管理员管理菜单
 ADMIN_MENU_KEYBOARD = [
     ["添加管理员", "移除管理员", "管理员列表"],
     ["返回主菜单"]
 ]
-
 PERMISSION_MENU_KEYBOARD = [
     ["返回主菜单"]
 ]
@@ -65,7 +56,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # ========== 一级菜单 ==========
     if text == "自动回复":
         if is_admin(user_id):
             reply_markup = ReplyKeyboardMarkup(AUTO_REPLY_MENU_KEYBOARD, resize_keyboard=True)
@@ -123,7 +113,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await show_main_menu(update, context)
         return
 
-    # ========== 自动回复菜单 ==========
     menu_level = context.user_data.get("menu_level")
     if menu_level == "auto_reply":
         if text == "管理自动回复关键词":
@@ -149,10 +138,8 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await show_main_menu(update, context)
             return
 
-    # ========== 自动回复二级菜单 ==========
     submenu = context.user_data.get("submenu")
     if menu_level == "auto_reply" and submenu:
-        # 管理关键词
         if submenu == "manage_keyword":
             if text == "精准关键词列表":
                 await list_keywords_cmd(update, context, mode="exact")
@@ -165,7 +152,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("自动回复：请选择操作", reply_markup=reply_markup)
                 context.user_data["submenu"] = None
                 return
-        # 添加关键词
         elif submenu == "add_keyword":
             if text == "添加精准关键词":
                 await update.message.reply_text("请输入精准关键词及回复内容（格式：关键词 回复内容）：", reply_markup=ReplyKeyboardRemove())
@@ -180,7 +166,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("自动回复：请选择操作", reply_markup=reply_markup)
                 context.user_data["submenu"] = None
                 return
-        # 删除关键词
         elif submenu == "delete_keyword":
             if text == "删除精准关键词":
                 await update.message.reply_text("请输入要删除的精准关键词：", reply_markup=ReplyKeyboardRemove())
@@ -195,7 +180,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("自动回复：请选择操作", reply_markup=reply_markup)
                 context.user_data["submenu"] = None
                 return
-        # 处理添加关键词输入
         elif context.user_data.get("add_keyword_mode"):
             mode = context.user_data["add_keyword_mode"]
             parts = text.split(maxsplit=1)
@@ -208,7 +192,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             else:
                 await update.message.reply_text("格式不对，请重新输入：关键词 回复内容")
             return
-        # 处理删除关键词输入
         elif context.user_data.get("delete_keyword_mode"):
             mode = context.user_data["delete_keyword_mode"]
             if text:
@@ -221,7 +204,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("请输入要删除的关键词")
             return
 
-    # ========== 定时消息菜单 ==========
     if menu_level == "schedule":
         if text == "删除上一条":
             await delete_last_schedule_cmd(update, context)
@@ -257,7 +239,6 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             context.user_data.clear()
             await show_main_menu(update, context)
             return
-        # 处理定时消息多轮输入
         elif context.user_data.get("schedule_op"):
             op = context.user_data["schedule_op"]
             parts = text.split()
@@ -283,20 +264,14 @@ async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("已设置类型。", reply_markup=ReplyKeyboardMarkup(SCHEDULE_MENU_KEYBOARD, resize_keyboard=True))
             elif op == "target" and len(parts) == 2:
                 context.args = [parts[0], parts[1]]
-                # 实现精准发送对象添加逻辑（请自行实现）
                 await update.message.reply_text(f"已设置ID {parts[0]} 的精准发送对象为 {parts[1]}。", reply_markup=ReplyKeyboardMarkup(SCHEDULE_MENU_KEYBOARD, resize_keyboard=True))
                 context.user_data["schedule_op"] = None
             elif op == "manage" and len(parts) == 1 and parts[0].isdigit():
-                # 进入该定时消息的管理界面（如删除、编辑等，需自行扩展）
                 await update.message.reply_text(f"请直接发送新内容或时间，或发送'返回主菜单'退出。")
-                # 可标记 context.user_data["current_schedule_id"] = parts[0]
                 context.user_data["schedule_op"] = None
             else:
                 await update.message.reply_text("输入不符合要求，请参考提示重新输入。")
             return
 
-    # ========== 其它菜单略（会员管理/管理员管理/权限控制同前） ==========
-
-    # ========== 默认：未命中菜单，自动回主菜单 ==========
     if update.effective_chat.type == "private":
         await show_main_menu(update, context)
