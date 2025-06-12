@@ -21,7 +21,7 @@ async def schedule(update, context):
     await show_schedule_list(update, context)
 
 def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).webhook_url(WEBHOOK_URL).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule))
     application.add_handler(CallbackQueryHandler(callback_query_handler))
