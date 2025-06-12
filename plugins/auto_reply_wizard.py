@@ -29,3 +29,6 @@ async def auto_reply_entry(update, context, *args, **kwargs):
 
 async def auto_reply_step(update, context, *args, **kwargs):
     await update.message.reply_text("自动回复步骤功能待实现。")
+
+async def auto_reply_media_choice(update, context, *args, **kwargs):
+    await update.message.reply_text("自动回复媒体选择功能待实现。")
