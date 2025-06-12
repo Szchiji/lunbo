@@ -1,4 +1,11 @@
-python-telegram-bot==20.6
+python-telegram-bot>=20.0
+aiohttp
+# 数据库驱动（根据实际数据库选其一，以下为常用 Postgres/MySQL/SQLite 示例）
 asyncpg
-apscheduler
-pyyaml
+aiomysql
+aiosqlite
+# 你可能用到的其他依赖，根据 plugins 下实际情况补充
+# 例如常见的：
+# SQLAlchemy
+# APScheduler
+# requests
