@@ -1,7 +1,3 @@
-python-telegram-bot[webhooks]>=20.0
-aiohttp
-# 下面保留你的数据库和其它依赖
-asyncpg
-aiomysql
-aiosqlite
-# ... 其它依赖 ...
+python-telegram-bot==20.7
+apscheduler==3.10.4
+asyncpg==0.29.0
