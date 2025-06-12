@@ -1,3 +1,4 @@
+import re
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
     update_schedule, update_schedule_multi, delete_schedule
@@ -7,7 +8,23 @@ from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
 
 EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_DATE = range(6)
-ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM = range(100, 108)
+ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM = range(100, 108)  # 8 items
+
+def parse_datetime_input(text):
+    """
+    支持 YYYY-MM-DD 或 YYYY-MM-DD HH:MM
+    返回标准字符串或空字符串
+    """
+    text = text.strip()
+    if text in ["0", "留空", "不限"]:
+        return ""
+    m1 = re.match(r"^\d{4}-\d{2}-\d{2}$", text)
+    m2 = re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$", text)
+    if m1:
+        return f"{text} 00:00"
+    if m2:
+        return text
+    return None  # 格式不对
 
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -109,12 +126,12 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif data.startswith("edit_start_date_"):
         schedule_id = int(data.split("_")[3])
         context.user_data["edit_schedule_id"] = schedule_id
-        await query.edit_message_text("请输入开始日期，格式如 2025-06-12：")
+        await query.edit_message_text("请输入开始日期，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限：")
         return EDIT_DATE
     elif data.startswith("edit_end_date_"):
         schedule_id = int(data.split("_")[3])
         context.user_data["edit_schedule_id"] = schedule_id
-        await query.edit_message_text("请输入结束日期，格式如 2025-06-30：")
+        await query.edit_message_text("请输入结束日期，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限：")
         return EDIT_DATE + 1
     elif data == "cancel_add":
         await query.edit_message_text("已取消添加。")
@@ -173,22 +190,32 @@ async def add_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     period = update.message.text.strip()
-    if period and not ("-" in period and len(period.split("-")) == 2):
+    if period in ["0", "留空", "不限", ""]:
+        period = ""
+    elif not re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", period):
         await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
         return ADD_PERIOD
     context.user_data['new_schedule']['time_period'] = period
-    await update.message.reply_text("请输入开始日期，格式如 2025-06-12，或留空不限：", reply_markup=schedule_add_menu(step="start"))
+    await update.message.reply_text("请输入开始日期，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限：", reply_markup=schedule_add_menu(step="start"))
     return ADD_START_DATE
 
 async def add_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    date = update.message.text.strip()
-    context.user_data['new_schedule']['start_date'] = date
-    await update.message.reply_text("请输入结束日期，格式如 2025-06-30，或留空不限：", reply_markup=schedule_add_menu(step="end"))
+    text = update.message.text.strip()
+    dt = parse_datetime_input(text)
+    if dt is None:
+        await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
+        return ADD_START_DATE
+    context.user_data['new_schedule']['start_date'] = dt
+    await update.message.reply_text("请输入结束日期，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限：", reply_markup=schedule_add_menu(step="end"))
     return ADD_END_DATE
 
 async def add_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    date = update.message.text.strip()
-    context.user_data['new_schedule']['end_date'] = date
+    text = update.message.text.strip()
+    dt = parse_datetime_input(text)
+    if dt is None:
+        await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
+        return ADD_END_DATE
+    context.user_data['new_schedule']['end_date'] = dt
     sch = context.user_data['new_schedule']
     desc = (
         "【确认添加定时消息】\n"
@@ -205,7 +232,7 @@ async def add_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    if text == "保存":
+    if text in ["保存", "确认"]:
         chat_id = update.effective_chat.id
         sch = context.user_data['new_schedule']
         await create_schedule(chat_id, sch)
@@ -213,7 +240,7 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_schedule_list(update, context)
         context.user_data.pop("new_schedule", None)
         return ConversationHandler.END
-    elif text == "取消":
+    elif text in ["取消"]:
         await update.message.reply_text("已取消添加。")
         context.user_data.pop("new_schedule", None)
         await show_schedule_list(update, context)
@@ -279,7 +306,9 @@ async def edit_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def edit_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = context.user_data.get("edit_schedule_id")
     period = update.message.text.strip()
-    if period and not ("-" in period and len(period.split("-")) == 2):
+    if period in ["0", "留空", "不限", ""]:
+        period = ""
+    elif not re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", period):
         await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
         return EDIT_PERIOD
     await update_schedule(schedule_id, "time_period", period)
@@ -289,16 +318,24 @@ async def edit_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = context.user_data.get("edit_schedule_id")
-    date = update.message.text.strip()
-    await update_schedule(schedule_id, "start_date", date)
+    text = update.message.text.strip()
+    dt = parse_datetime_input(text)
+    if dt is None:
+        await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
+        return EDIT_DATE
+    await update_schedule(schedule_id, "start_date", dt)
     await update.message.reply_text("开始日期已更新。")
     await show_schedule_detail(update, context, schedule_id)
     return ConversationHandler.END
 
 async def edit_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = context.user_data.get("edit_schedule_id")
-    date = update.message.text.strip()
-    await update_schedule(schedule_id, "end_date", date)
+    text = update.message.text.strip()
+    dt = parse_datetime_input(text)
+    if dt is None:
+        await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
+        return EDIT_DATE + 1
+    await update_schedule(schedule_id, "end_date", dt)
     await update.message.reply_text("结束日期已更新。")
     await show_schedule_detail(update, context, schedule_id)
     return ConversationHandler.END
