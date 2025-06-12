@@ -1,7 +1,6 @@
 import logging
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    ConversationHandler, MessageHandler, filters
+    ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 )
 from config import BOT_TOKEN, WEBHOOK_URL, GROUP_IDS
 from db import init_db
@@ -24,21 +23,19 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule))
-    application.add_handler(CallbackQueryHandler(callback_query_handler))
 
     conv = ConversationHandler(
-        entry_points=[],
+        entry_points=[CallbackQueryHandler(callback_query_handler)],
         states={
-            EDIT_TEXT: [MessageHandler(filters.TEXT, edit_text)],
+            EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text)],
             EDIT_MEDIA: [MessageHandler(filters.PHOTO | filters.VIDEO | filters.TEXT, edit_media)],
-            EDIT_BUTTON: [MessageHandler(filters.TEXT, edit_button)],
-            EDIT_REPEAT: [MessageHandler(filters.TEXT, edit_repeat)],
-            EDIT_PERIOD: [MessageHandler(filters.TEXT, edit_period)],
-            EDIT_DATE: [MessageHandler(filters.TEXT, edit_start_date)],
-            EDIT_DATE + 1: [MessageHandler(filters.TEXT, edit_end_date)],
+            EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button)],
+            EDIT_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat)],
+            EDIT_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period)],
+            EDIT_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date)],
+            EDIT_DATE + 1: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date)],
         },
         fallbacks=[],
-        map_to_parent={ConversationHandler.END: ConversationHandler.END},
     )
     application.add_handler(conv)
 
