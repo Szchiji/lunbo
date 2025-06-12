@@ -4,7 +4,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ChatMemberHandler
 )
-# 这里假设你有以下自定义插件，可根据你的目录结构调整
+# 引入你的自定义插件
 from plugins.main_menu import show_main_menu, handle_menu_button
 from plugins.members import add_member_cmd, remove_member_cmd, list_members_cmd
 from plugins.auto_reply_wizard import (
@@ -24,22 +24,25 @@ logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.environ.get("BOT_TOKEN")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST")  # 如 https://xxx.onrender.com（Webhook模式用）
-WEBHOOK_PATH = f"/bot/{TOKEN}" if WEBHOOK_HOST else ""
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else ""
+WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST")  # 形如 https://your-service.onrender.com
 PORT = int(os.environ.get('PORT', 10000))
+
+# 处理 WEBHOOK 路径和 URL
+if WEBHOOK_HOST:
+    WEBHOOK_HOST = WEBHOOK_HOST.rstrip("/")  # 防止双斜杠
+    WEBHOOK_PATH = f"/bot/{TOKEN}"
+    WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+else:
+    WEBHOOK_PATH = ""
+    WEBHOOK_URL = ""
 
 # /start 指令
 async def start(update, context):
-    await update.message.reply_text("欢迎使用机器人！")
+    await update.message.reply_text("欢迎使用小微机器人！")
     await show_main_menu(update, context)
 
 def build_app():
-    # Webhook模式
-    if WEBHOOK_HOST:
-        app = ApplicationBuilder().token(TOKEN).webhook_url(WEBHOOK_URL).build()
-    else:
-        app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     # 指令与处理器注册
     app.add_handler(CommandHandler("start", start))
@@ -69,12 +72,13 @@ def build_app():
 if __name__ == "__main__":
     app = build_app()
     import asyncio
-    if WEBHOOK_HOST:
+    if WEBHOOK_URL:
         # Webhook模式（用于Render Web Service等）
         asyncio.run(app.run_webhook(
             listen="0.0.0.0",
             port=PORT,
             webhook_url=WEBHOOK_URL,
+            webhook_path=WEBHOOK_PATH
         ))
     else:
         # 轮询模式（本地开发或后台Worker）
