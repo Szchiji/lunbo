@@ -7,6 +7,7 @@ from db import init_db
 from modules.scheduler import (
     show_schedule_list, callback_query_handler,
     edit_text, edit_media, edit_button, edit_repeat, edit_period, edit_start_date, edit_end_date,
+    add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
     ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_DATE
 )
