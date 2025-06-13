@@ -40,6 +40,7 @@ def parse_datetime_input(text):
         return text
     return None
 
+# ===== 添加流程 =====
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -234,6 +235,7 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
 
+# ===== 编辑流程 =====
 @admin_only
 async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
@@ -387,6 +389,7 @@ async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("结束日期已修改。")
     return ConversationHandler.END
 
+# ===== 开关按钮 =====
 @admin_only
 async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
