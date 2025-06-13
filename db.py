@@ -1,22 +1,16 @@
-import os
 import aiosqlite
 import asyncpg
 from config import POSTGRES_DSN
 
 DB_PATH = "schedules.db"
-
-# -------- 数据库引擎自动切换 --------
 USE_PG = bool(POSTGRES_DSN)
 
-# -------- SQLite实现 --------
 async def _sqlite_conn():
     return await aiosqlite.connect(DB_PATH)
 
-# -------- PostgreSQL实现 --------
 async def _pg_conn():
     return await asyncpg.create_pool(dsn=POSTGRES_DSN, min_size=1, max_size=5)
 
-# -------- 获取全部定时消息 --------
 async def fetch_schedules(chat_id):
     if USE_PG:
         pool = await _pg_conn()
@@ -33,7 +27,6 @@ async def fetch_schedules(chat_id):
             await cursor.close()
             return [dict(row) for row in rows]
 
-# -------- 获取单条定时消息 --------
 async def fetch_schedule(schedule_id):
     if USE_PG:
         pool = await _pg_conn()
@@ -50,7 +43,6 @@ async def fetch_schedule(schedule_id):
             await cursor.close()
             return dict(row) if row else None
 
-# -------- 创建定时消息 --------
 async def create_schedule(chat_id, sch):
     if USE_PG:
         pool = await _pg_conn()
@@ -81,7 +73,6 @@ async def create_schedule(chat_id, sch):
             )
             await db.commit()
 
-# -------- 更新定时消息 --------
 async def update_schedule(schedule_id, sch):
     if USE_PG:
         pool = await _pg_conn()
@@ -114,7 +105,6 @@ async def update_schedule(schedule_id, sch):
             )
             await db.commit()
 
-# -------- 批量更新 --------
 async def update_schedule_multi(schedule_id, **kwargs):
     if not kwargs:
         return
@@ -137,7 +127,6 @@ async def update_schedule_multi(schedule_id, **kwargs):
             await db.execute(sql, vals)
             await db.commit()
 
-# -------- 删除定时消息 --------
 async def delete_schedule(schedule_id):
     if USE_PG:
         pool = await _pg_conn()
@@ -149,7 +138,6 @@ async def delete_schedule(schedule_id):
             await db.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
             await db.commit()
 
-# -------- 初始化表结构 --------
 async def init_db():
     if USE_PG:
         pool = await _pg_conn()
