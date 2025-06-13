@@ -17,14 +17,15 @@ from modules.scheduler import (
     edit_end_date_entry, edit_end_date_save,
     toggle_status, toggle_remove_last, toggle_pin, delete_schedule_callback,
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
-    EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE
+    EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
+    show_help, show_welcome
 )
 from modules.broadcast import schedule_broadcast_jobs
 
 logging.basicConfig(level=logging.INFO)
 
 async def start(update, context):
-    await update.message.reply_text("欢迎使用群定时消息机器人！\n请用 /schedule 管理定时消息。")
+    await show_welcome(update, context)
 
 async def schedule(update, context):
     await show_schedule_list(update, context)
@@ -46,6 +47,7 @@ async def cancel_callback(update, context):
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", show_help))
     application.add_handler(CommandHandler("schedule", schedule))
 
     conv = ConversationHandler(
