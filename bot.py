@@ -25,9 +25,6 @@ logging.basicConfig(level=logging.DEBUG)
 async def start(update, context):
     await show_welcome(update, context)
 
-async def schedule(update, context):
-    await show_schedule_list(update, context)
-
 async def cancel(update, context):
     if update.message:
         await update.message.reply_text("已取消操作。")
@@ -46,11 +43,11 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", show_help))
-    application.add_handler(CommandHandler("schedule", schedule))
+    # 注意：不要单独注册 CommandHandler("schedule", ...) 否则状态机会乱
 
     conv = ConversationHandler(
         entry_points=[
-            CommandHandler("schedule", schedule),
+            CommandHandler("schedule", show_schedule_list),
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
@@ -60,6 +57,7 @@ def main():
             SELECT_GROUP: [
                 CallbackQueryHandler(select_group_callback, pattern="^set_group_")
             ],
+
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
@@ -71,6 +69,7 @@ def main():
                 MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ],
+
             EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
             EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
             EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
