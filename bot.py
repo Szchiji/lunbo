@@ -19,7 +19,6 @@ from modules.scheduler import (
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
     show_help, show_welcome, schedule_broadcast_jobs
 )
-from telegram.ext import ConversationHandler
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -61,7 +60,6 @@ def main():
             SELECT_GROUP: [
                 CallbackQueryHandler(select_group_callback, pattern="^set_group_")
             ],
-
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
@@ -73,7 +71,6 @@ def main():
                 MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ],
-
             EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
             EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
             EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
