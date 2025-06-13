@@ -53,7 +53,8 @@ def main():
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("schedule", schedule),
-            MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule)
+            MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$")   # 修正：支持菜单按钮
         ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
