@@ -5,11 +5,10 @@ from telegram.ext import (
 from config import BOT_TOKEN, WEBHOOK_URL, GROUP_IDS
 from db import init_db
 from modules.scheduler import (
-    show_schedule_list, callback_query_handler,
-    edit_text, edit_media, edit_button, edit_repeat, edit_period, edit_start_date, edit_end_date,
+    show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
+    edit_text, edit_media, edit_button, edit_repeat, add_period, add_start_date, add_end_date, add_confirm,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
-    ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
-    EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_DATE
+    SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM
 )
 from modules.broadcast import schedule_broadcast_jobs
 
@@ -41,40 +40,23 @@ def main():
     application.add_handler(CommandHandler("schedule", schedule))
 
     conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(callback_query_handler)],
+        entry_points=[
+            CommandHandler("schedule", schedule),
+            MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule)
+        ],
         states={
-            # 编辑流程
-            EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text),
-                        CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), edit_media),
-                         CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button),
-                          CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            EDIT_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat),
-                          CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            EDIT_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period),
-                          CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            EDIT_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date),
-                        CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            EDIT_DATE + 1: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date),
-                            CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            # 添加流程
-            ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text),
-                       CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media),
-                        CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button),
-                         CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_repeat),
-                         CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_period),
-                         CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_START_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_start_date),
-                             CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_END_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_end_date),
-                           CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
-            ADD_CONFIRM: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
-                          CallbackQueryHandler(cancel_callback, pattern='^cancel$')],
+            SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
+            ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
+            ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media)],
+            ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
+            ADD_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_repeat)],
+            ADD_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_period)],
+            ADD_START_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_start_date)],
+            ADD_END_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_end_date)],
+            ADD_CONFIRM: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
+                CallbackQueryHandler(confirm_callback)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
@@ -86,7 +68,7 @@ def main():
     async def on_startup(app):
         await init_db()
         logging.info("数据库初始化完成")
-        schedule_broadcast_jobs(app, GROUP_IDS)
+        schedule_broadcast_jobs(app)
 
     application.post_init = on_startup
     application.run_webhook(
