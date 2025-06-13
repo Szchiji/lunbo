@@ -41,6 +41,21 @@ def parse_datetime_input(text):
         return text
     return None
 
+# 新增：强制回到编辑菜单
+async def show_edit_menu(update, context, schedule_id=None):
+    if not schedule_id:
+        schedule_id = context.user_data.get("edit_schedule_id")
+    sch = await fetch_schedule(schedule_id)
+    desc = f"【定时消息设置】\n{sch.get('text','')}\n"
+    if sch.get('media_url'):
+        desc += f"\n[已含媒体]"
+    if sch.get('button_text'):
+        desc += f"\n[包含按钮：{sch['button_text']}]"
+    if getattr(update, "message", None):
+        await update.message.reply_text(desc, reply_markup=schedule_edit_menu(sch))
+    elif getattr(update, "callback_query", None):
+        await update.callback_query.edit_message_text(desc, reply_markup=schedule_edit_menu(sch))
+
 # ======================= 添加流程 ==========================
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -240,31 +255,12 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADD_CONFIRM
 
 # ======================= 编辑流程 ==========================
+
 @admin_only
 async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
-    sch = await fetch_schedule(schedule_id)
-    desc = f"【定时消息设置】\n{sch.get('text','')}\n"
-    if sch.get('media_url'):
-        desc += f"\n[已含媒体]"
-    if sch.get('button_text'):
-        desc += f"\n[包含按钮：{sch['button_text']}]"
-    await update.callback_query.edit_message_text(
-        desc,
-        reply_markup=schedule_edit_menu(sch)
-    )
+    await show_edit_menu(update, context, schedule_id=schedule_id)
     return ConversationHandler.END
-
-def _edit_menu_after(update, sch, info):
-    desc = f"【定时消息设置】\n{sch.get('text','')}\n"
-    if sch.get('media_url'):
-        desc += f"\n[已含媒体]"
-    if sch.get('button_text'):
-        desc += f"\n[包含按钮：{sch['button_text']}]"
-    return update.message.reply_text(
-        f"{info}\n\n{desc}",
-        reply_markup=schedule_edit_menu(sch)
-    )
 
 @admin_only
 async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -279,8 +275,8 @@ async def edit_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_id = context.user_data.get("edit_schedule_id")
         new_text = update.message.text.strip()
         await update_schedule_multi(schedule_id, text=new_text)
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "文本已修改。")
+        await update.message.reply_text("文本已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -309,11 +305,9 @@ async def edit_media_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media = update.message.text.strip()
         else:
             media = ""
-        print("[edit_media_save] schedule_id:", schedule_id, "media:", media, flush=True)
         await update_schedule_multi(schedule_id, media_url=media)
-        sch = await fetch_schedule(schedule_id)
-        print("[edit_media_save] updated sch:", sch, flush=True)
-        await _edit_menu_after(update, sch, "媒体已修改。")
+        await update.message.reply_text("媒体已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -334,13 +328,13 @@ async def edit_button_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
         if text.lower() == "无":
             await update_schedule_multi(schedule_id, button_text="", button_url="")
-            sch = await fetch_schedule(schedule_id)
-            await _edit_menu_after(update, sch, "按钮已删除。")
+            await update.message.reply_text("按钮已删除，已返回编辑菜单。")
+            await show_edit_menu(update, context, schedule_id=schedule_id)
             return ConversationHandler.END
         btn_text, btn_url = text.split(",", 1)
         await update_schedule_multi(schedule_id, button_text=btn_text.strip(), button_url=btn_url.strip())
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "按钮已修改。")
+        await update.message.reply_text("按钮已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -360,8 +354,8 @@ async def edit_repeat_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         schedule_id = context.user_data.get("edit_schedule_id")
         minutes = int(update.message.text.strip())
         await update_schedule_multi(schedule_id, repeat_seconds=minutes*60)
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "重复时间已修改。")
+        await update.message.reply_text("重复时间已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -386,8 +380,8 @@ async def edit_period_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
             return EDIT_PERIOD
         await update_schedule_multi(schedule_id, time_period=period)
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "时间段已修改。")
+        await update.message.reply_text("时间段已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -411,8 +405,8 @@ async def edit_start_date_save(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
             return EDIT_START_DATE
         await update_schedule_multi(schedule_id, start_date=dt)
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "开始日期已修改。")
+        await update.message.reply_text("开始日期已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -436,8 +430,8 @@ async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
             return EDIT_END_DATE
         await update_schedule_multi(schedule_id, end_date=dt)
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "结束日期已修改。")
+        await update.message.reply_text("结束日期已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
         return ConversationHandler.END
     except Exception:
         print(traceback.format_exc())
@@ -452,8 +446,7 @@ async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_status = 0 if sch.get("status") else 1
     await update_schedule_multi(schedule_id, status=new_status)
     await update.callback_query.answer(f"{'已关闭' if new_status == 0 else '已启用'}")
-    sch = await fetch_schedule(schedule_id)
-    await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
+    await show_edit_menu(update, context, schedule_id=schedule_id)
 
 @admin_only
 async def toggle_remove_last(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -462,8 +455,7 @@ async def toggle_remove_last(update: Update, context: ContextTypes.DEFAULT_TYPE)
     new_val = 0 if sch.get("remove_last") else 1
     await update_schedule_multi(schedule_id, remove_last=new_val)
     await update.callback_query.answer(f"删除上一条：{'已开' if new_val else '已关'}")
-    sch = await fetch_schedule(schedule_id)
-    await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
+    await show_edit_menu(update, context, schedule_id=schedule_id)
 
 @admin_only
 async def toggle_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -472,8 +464,7 @@ async def toggle_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_val = 0 if sch.get("pin") else 1
     await update_schedule_multi(schedule_id, pin=new_val)
     await update.callback_query.answer(f"置顶：{'已开' if new_val else '已关'}")
-    sch = await fetch_schedule(schedule_id)
-    await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
+    await show_edit_menu(update, context, schedule_id=schedule_id)
 
 @admin_only
 async def delete_schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
