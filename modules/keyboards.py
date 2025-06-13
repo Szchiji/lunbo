@@ -25,6 +25,7 @@ def schedule_edit_menu(schedule):
         ],
         [
             InlineKeyboardButton(f"删除上一条: {'✅' if schedule.get('remove_last') else '❌'}", callback_data=f"toggle_remove_last_{schedule['id']}"),
+            
         ],
         [
             InlineKeyboardButton("📝修改文本", callback_data=f"edit_text_{schedule['id']}"),
