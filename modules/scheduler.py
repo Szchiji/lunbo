@@ -251,7 +251,7 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
 
-# ========== 编辑功能 ==========
+# ========== 编辑 ==========
 @admin_only
 async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
