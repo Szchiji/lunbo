@@ -80,7 +80,7 @@ def main():
                 CallbackQueryHandler(select_group_callback, pattern="^set_group_")
             ],
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
-            ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.DOCUMENT | filters.TEXT) & (~filters.COMMAND), add_media)],
+            ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
             ADD_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_repeat)],
             ADD_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_period)],
@@ -91,7 +91,7 @@ def main():
                 CallbackQueryHandler(confirm_callback)
             ],
             EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
-            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.DOCUMENT | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
+            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
             EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
             EDIT_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save)],
             EDIT_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save)],
