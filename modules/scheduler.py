@@ -6,7 +6,7 @@ from db import (
 from modules.keyboards import (
     schedule_list_menu, schedule_edit_menu, schedule_add_menu, group_select_menu
 )
-from config import GROUPS
+from config import GROUPS, ADMINS
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 from datetime import datetime
@@ -14,9 +14,24 @@ from datetime import datetime
 # 状态枚举
 (
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT,
-    ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM
-) = range(200, 209)
+    ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
+    EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE
+) = range(200, 216)
 
+# ========== 权限控制 ==========
+def admin_only(func):
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        if user_id not in ADMINS:
+            if update.message:
+                await update.message.reply_text("无权限。")
+            elif update.callback_query:
+                await update.callback_query.answer("无权限", show_alert=True)
+            return ConversationHandler.END
+        return await func(update, context, *args, **kwargs)
+    return wrapper
+
+# ========== 工具 ==========
 def parse_datetime_input(text):
     text = text.strip()
     if text in ["0", "留空", "不限", ""]:
@@ -30,6 +45,7 @@ def parse_datetime_input(text):
     return None
 
 # ========== 定时消息列表 ==========
+@admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     schedules = await fetch_schedules(chat_id)
@@ -45,28 +61,33 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
 
 # ========== 添加流程 ==========
+@admin_only
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu(GROUPS))
     return SELECT_GROUP
 
+@admin_only
 async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
     if data.startswith("set_group_"):
         group_id = int(data[len("set_group_"):])
         context.user_data["selected_group_id"] = group_id
-        await query.edit_message_text(f"已选择群聊：{GROUPS.get(group_id, group_id)}，请继续设置定时消息。\n请输入文本内容：")
+        group_title = GROUPS[group_id] if isinstance(GROUPS, dict) else group_id
+        await query.edit_message_text(f"已选择群聊：{group_title}，请继续设置定时消息。\n请输入文本内容：")
         context.user_data["new_schedule"] = {}
         return ADD_TEXT
     await query.answer("请选择群聊")
     return SELECT_GROUP
 
+@admin_only
 async def add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     context.user_data['new_schedule']['text'] = text
     await update.message.reply_text("请发送媒体（图片/视频/文件ID/URL），或输入“无”跳过：")
     return ADD_MEDIA
 
+@admin_only
 async def add_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.photo:
         media = update.message.photo[-1].file_id
@@ -80,6 +101,7 @@ async def add_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("请输入按钮文字和链接，用英文逗号分隔，如：更多内容,https://example.com\n如无需按钮请输入“无”：")
     return ADD_BUTTON
 
+@admin_only
 async def add_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text.lower() == "无":
@@ -96,6 +118,7 @@ async def add_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("请输入重复时间，单位分钟（如60）：")
     return ADD_REPEAT
 
+@admin_only
 async def add_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         minutes = int(update.message.text.strip())
@@ -106,6 +129,7 @@ async def add_repeat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("请输入时间段，格式如 09:00-18:00 或留空全天：")
     return ADD_PERIOD
 
+@admin_only
 async def add_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     period = update.message.text.strip()
     if period in ["0", "留空", "不限", ""]:
@@ -117,6 +141,7 @@ async def add_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("请输入开始日期，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限：")
     return ADD_START_DATE
 
+@admin_only
 async def add_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     dt = parse_datetime_input(text)
@@ -127,6 +152,7 @@ async def add_start_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("请输入结束日期，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限：")
     return ADD_END_DATE
 
+@admin_only
 async def add_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     dt = parse_datetime_input(text)
@@ -148,6 +174,7 @@ async def add_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(desc, reply_markup=schedule_add_menu(step="confirm"))
     return ADD_CONFIRM
 
+@admin_only
 async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query.data == "confirm_save":
@@ -170,6 +197,7 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("未知操作")
         return ADD_CONFIRM
 
+@admin_only
 async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text in ["保存", "确认"]:
@@ -188,6 +216,183 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
+
+# ========== 编辑功能 ==========
+@admin_only
+async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请输入新的文本内容：")
+    return EDIT_TEXT
+
+@admin_only
+async def edit_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    new_text = update.message.text.strip()
+    await update_schedule_multi(schedule_id, text=new_text)
+    await update.message.reply_text("文本已修改。")
+    return ConversationHandler.END
+
+@admin_only
+async def edit_media_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请发送新的媒体（图片/视频/文件ID/URL），或输入“无”以删除：")
+    return EDIT_MEDIA
+
+@admin_only
+async def edit_media_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    if update.message.photo:
+        media = update.message.photo[-1].file_id
+    elif update.message.video:
+        media = update.message.video.file_id
+    elif update.message.text and update.message.text.strip().lower() != "无":
+        media = update.message.text.strip()
+    else:
+        media = ""
+    await update_schedule_multi(schedule_id, media_url=media)
+    await update.message.reply_text("媒体已修改。")
+    return ConversationHandler.END
+
+@admin_only
+async def edit_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请输入新的按钮文字,链接，用英文逗号分隔，如：更多内容,https://example.com\n或输入“无”以删除：")
+    return EDIT_BUTTON
+
+@admin_only
+async def edit_button_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    text = update.message.text.strip()
+    if text.lower() == "无":
+        await update_schedule_multi(schedule_id, button_text="", button_url="")
+        await update.message.reply_text("按钮已删除。")
+        return ConversationHandler.END
+    try:
+        btn_text, btn_url = text.split(",", 1)
+        await update_schedule_multi(schedule_id, button_text=btn_text.strip(), button_url=btn_url.strip())
+        await update.message.reply_text("按钮已修改。")
+    except Exception:
+        await update.message.reply_text("格式错误，请用英文逗号隔开，如：按钮文字,https://xxx.com。")
+        return EDIT_BUTTON
+    return ConversationHandler.END
+
+@admin_only
+async def edit_repeat_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请输入新的重复时间，单位分钟（如60）：")
+    return EDIT_REPEAT
+
+@admin_only
+async def edit_repeat_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    try:
+        minutes = int(update.message.text.strip())
+        await update_schedule_multi(schedule_id, repeat_seconds=minutes*60)
+        await update.message.reply_text("重复时间已修改。")
+    except Exception:
+        await update.message.reply_text("请输入整数分钟数。")
+        return EDIT_REPEAT
+    return ConversationHandler.END
+
+@admin_only
+async def edit_period_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请输入新的时间段，格式如 09:00-18:00 或留空全天：")
+    return EDIT_PERIOD
+
+@admin_only
+async def edit_period_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    period = update.message.text.strip()
+    if period in ["0", "留空", "不限", ""]:
+        period = ""
+    elif not re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", period):
+        await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
+        return EDIT_PERIOD
+    await update_schedule_multi(schedule_id, time_period=period)
+    await update.message.reply_text("时间段已修改。")
+    return ConversationHandler.END
+
+@admin_only
+async def edit_start_date_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请输入新的开始日期，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限：")
+    return EDIT_START_DATE
+
+@admin_only
+async def edit_start_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    text = update.message.text.strip()
+    dt = parse_datetime_input(text)
+    if dt is None:
+        await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
+        return EDIT_START_DATE
+    await update_schedule_multi(schedule_id, start_date=dt)
+    await update.message.reply_text("开始日期已修改。")
+    return ConversationHandler.END
+
+@admin_only
+async def edit_end_date_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    context.user_data["edit_schedule_id"] = schedule_id
+    await update.callback_query.edit_message_text("请输入新的结束日期，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限：")
+    return EDIT_END_DATE
+
+@admin_only
+async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = context.user_data.get("edit_schedule_id")
+    text = update.message.text.strip()
+    dt = parse_datetime_input(text)
+    if dt is None:
+        await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
+        return EDIT_END_DATE
+    await update_schedule_multi(schedule_id, end_date=dt)
+    await update.message.reply_text("结束日期已修改。")
+    return ConversationHandler.END
+
+# ========== 开关/删除 ==========
+@admin_only
+async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    sch = await fetch_schedule(schedule_id)
+    new_status = 0 if sch.get("status") else 1
+    await update_schedule_multi(schedule_id, status=new_status)
+    await update.callback_query.answer(f"{'已关闭' if new_status == 0 else '已启用'}")
+    # 刷新菜单
+    sch = await fetch_schedule(schedule_id)
+    await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
+
+@admin_only
+async def toggle_remove_last(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    sch = await fetch_schedule(schedule_id)
+    new_val = 0 if sch.get("remove_last") else 1
+    await update_schedule_multi(schedule_id, remove_last=new_val)
+    await update.callback_query.answer(f"删除上一条：{'已开' if new_val else '已关'}")
+    sch = await fetch_schedule(schedule_id)
+    await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
+
+@admin_only
+async def toggle_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    sch = await fetch_schedule(schedule_id)
+    new_val = 0 if sch.get("pin") else 1
+    await update_schedule_multi(schedule_id, pin=new_val)
+    await update.callback_query.answer(f"置顶：{'已开' if new_val else '已关'}")
+    sch = await fetch_schedule(schedule_id)
+    await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
+
+@admin_only
+async def delete_schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    await delete_schedule(schedule_id)
+    await update.callback_query.edit_message_text("定时消息已删除。")
 
 # ========== 定时推送/删除上一条 ==========
 def is_schedule_active(sch):
@@ -266,6 +471,7 @@ def get_scheduler_conversation_handler():
         entry_points=[MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule)],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
+
             ADD_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & ~filters.COMMAND, add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_button)],
@@ -276,7 +482,15 @@ def get_scheduler_conversation_handler():
             ADD_CONFIRM: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_confirm),
                 CallbackQueryHandler(confirm_callback)
-            ]
+            ],
+
+            EDIT_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_text_save)],
+            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & ~filters.COMMAND, edit_media_save)],
+            EDIT_BUTTON: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_button_save)],
+            EDIT_REPEAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_repeat_save)],
+            EDIT_PERIOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_period_save)],
+            EDIT_START_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_start_date_save)],
+            EDIT_END_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_end_date_save)],
         },
         fallbacks=[],
         allow_reentry=True
