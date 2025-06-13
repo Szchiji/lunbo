@@ -1,12 +1,6 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 def schedule_list_menu(schedules):
-    """
-    生成定时消息列表菜单
-    - 有定时消息时，每条显示为按钮，可点击进入设置，展示文本片段/频率/状态
-    - 没有定时消息时，显示“暂无定时消息”
-    - 永远有“➕ 添加定时消息”按钮
-    """
     keyboard = []
     if schedules and len(schedules) > 0:
         for sch in schedules:
@@ -15,7 +9,7 @@ def schedule_list_menu(schedules):
             rep_str = f"{repeat//60}分钟" if repeat else "单次"
             status = "✅" if sch.get('status', 1) else "❌"
             btn_text = f"{status} {rep_str} | {txt}" if txt else f"{status} {rep_str}"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"edit_{sch['id']}")])
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"edit_menu_{sch['id']}")])
     else:
         keyboard.append([InlineKeyboardButton("暂无定时消息", callback_data="noop")])
     keyboard.append([InlineKeyboardButton("➕ 添加定时消息", callback_data="add_schedule")])
@@ -43,7 +37,7 @@ def schedule_edit_menu(schedule):
         ],
         [
             InlineKeyboardButton("🗑删除本条", callback_data=f"delete_{schedule['id']}"),
-            InlineKeyboardButton("🔙返回", callback_data="schedule_list"),
+            InlineKeyboardButton("🔙返回", callback_data="cancel"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
