@@ -469,3 +469,20 @@ async def delete_schedule_callback(update: Update, context: ContextTypes.DEFAULT
     schedule_id = int(update.callback_query.data.split("_")[-1])
     await delete_schedule(schedule_id)
     await update.callback_query.edit_message_text("定时消息已删除。")
+
+@admin_only
+async def edit_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        schedule_id = context.user_data.get("edit_schedule_id")
+        new_text = update.message.text.strip()
+        print(f"[DEBUG] edit_text_save: schedule_id={schedule_id}, new_text={new_text}", flush=True)
+        await update_schedule_multi(schedule_id, text=new_text)
+        updated = await fetch_schedule(schedule_id)
+        print(f"[DEBUG] after update, db text={updated['text']}", flush=True)
+        await update.message.reply_text("文本已修改，已返回编辑菜单。")
+        await show_edit_menu(update, context, schedule_id=schedule_id)
+        return ConversationHandler.END
+    except Exception:
+        print(traceback.format_exc())
+        await update.message.reply_text("出现异常，修改未成功。")
+        return ConversationHandler.END
