@@ -104,7 +104,7 @@ def main():
     async def on_startup(app):
         await init_db()
         logging.info("数据库初始化完成")
-        schedule_broadcast_jobs(app, list(GROUPS.keys()))
+        schedule_broadcast_jobs(app)
 
     application.post_init = on_startup
 
