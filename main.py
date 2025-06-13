@@ -20,6 +20,7 @@ from modules.scheduler import (
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
 )
+from modules.sender import scheduled_sender
 from modules.keyboards import schedule_list_menu
 from telegram.error import BadRequest
 
@@ -74,6 +75,7 @@ def main():
             MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
         ],
         states={
+            # ...（同你当前代码）...
             SELECT_GROUP: [
                 CallbackQueryHandler(select_group_callback, pattern="^set_group_")
             ],
@@ -123,6 +125,13 @@ def main():
         logging.info("数据库初始化完成")
 
     application.post_init = on_startup
+
+    # 启动定时群发任务（指定所有群/频道）
+    target_chat_ids = list(GROUPS.keys())
+    import asyncio
+    asyncio.get_event_loop().create_task(
+        scheduled_sender(application, target_chat_ids)
+    )
 
     # Render生产环境端口绑定
     port = int(os.environ.get("PORT", 8080))
