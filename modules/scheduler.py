@@ -12,14 +12,12 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 from datetime import datetime
 
-# 状态枚举
 (
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT,
     ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE
 ) = range(200, 216)
 
-# ========== 权限控制 ==========
 def admin_only(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
@@ -32,7 +30,6 @@ def admin_only(func):
         return await func(update, context, *args, **kwargs)
     return wrapper
 
-# ========== 帮助/欢迎 ==========
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🤖 群定时消息机器人 帮助\n"
@@ -66,7 +63,6 @@ async def show_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.callback_query:
         await update.callback_query.edit_message_text(text)
 
-# ========== 工具 ==========
 def parse_datetime_input(text):
     text = text.strip()
     if text in ["0", "留空", "不限", ""]:
@@ -79,10 +75,8 @@ def parse_datetime_input(text):
         return text
     return None
 
-# ========== 定时消息列表 ==========
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 支持私聊时先选群，群聊直接展示本群
     if update.effective_chat.type == "private":
         group_id = context.user_data.get("selected_group_id")
         if not group_id:
@@ -97,6 +91,7 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
             reply_markup=schedule_list_menu(schedules)
         )
+        return ConversationHandler.END
     else:
         chat_id = update.effective_chat.id
         schedules = await fetch_schedules(chat_id)
@@ -104,6 +99,7 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "⏰ 定时消息列表：\n点击条目可设置。",
             reply_markup=schedule_list_menu(schedules)
         )
+        return ConversationHandler.END
 
 @admin_only
 async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,7 +118,6 @@ async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer("请选择群聊")
     return SELECT_GROUP
 
-# ========== 添加流程 ==========
 @admin_only
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == "private":
@@ -250,7 +245,6 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await create_schedule(group_id, sch)
         await query.edit_message_text("定时消息已添加。")
         context.user_data.pop("new_schedule", None)
-        # 不要清除 selected_group_id，否则私聊可持续操作同一个群
         return ConversationHandler.END
     elif query.data == "cancel_add":
         await query.edit_message_text("已取消添加。")
@@ -278,7 +272,6 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
 
-# ========== 编辑 ==========
 @admin_only
 async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
@@ -417,7 +410,6 @@ async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("结束日期已修改。")
     return ConversationHandler.END
 
-# ========== 开关/删除 ==========
 @admin_only
 async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
@@ -454,7 +446,6 @@ async def delete_schedule_callback(update: Update, context: ContextTypes.DEFAULT
     await delete_schedule(schedule_id)
     await update.callback_query.edit_message_text("定时消息已删除。")
 
-# ========== 定时推送/删除上一条 ==========
 def is_schedule_active(sch):
     if not sch.get("status", 1):
         return False
@@ -491,8 +482,7 @@ async def broadcast_task(context):
             repeat_sec = sch.get("repeat_seconds", 0) or 60
             last_time = last_sent.get((key, "time"), 0)
             if now - last_time < repeat_sec:
-                continue  # 未到间隔时间
-            # 删除上一条
+                continue
             if sch.get("remove_last"):
                 last_msg_id = last_sent.get(key)
                 if last_msg_id:
@@ -500,7 +490,6 @@ async def broadcast_task(context):
                         await context.bot.delete_message(chat_id, last_msg_id)
                     except Exception as e:
                         print(f"删除上一条消息失败 chat_id={chat_id} schedule_id={sch['id']} err={e}")
-            # 发送新消息（无论文本还是媒体都支持按钮）
             reply_markup = None
             if sch.get("button_text") and sch.get("button_url"):
                 reply_markup = InlineKeyboardMarkup(
@@ -516,7 +505,6 @@ async def broadcast_task(context):
                     msg = await context.bot.send_message(chat_id, sch["text"] + f"\n[媒体] {sch['media_url']}", reply_markup=reply_markup)
             else:
                 msg = await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
-            # 记录最新消息id和时间
             if msg:
                 last_sent[key] = msg.message_id
                 last_sent[(key, "time")] = now
@@ -524,42 +512,6 @@ async def broadcast_task(context):
 def schedule_broadcast_jobs(application):
     application.job_queue.run_repeating(
         broadcast_task,
-        interval=60,   # 每60秒执行一次
-        first=10       # 启动后10秒首次执行
-    )
-
-# ========== ConversationHandler ==========
-def get_scheduler_conversation_handler():
-    return ConversationHandler(
-        entry_points=[
-            MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
-            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
-            MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
-            MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list)
-        ],
-        states={
-            SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
-
-            ADD_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_text)],
-            ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & ~filters.COMMAND, add_media)],
-            ADD_BUTTON: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_button)],
-            ADD_REPEAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_repeat)],
-            ADD_PERIOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_period)],
-            ADD_START_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_start_date)],
-            ADD_END_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_end_date)],
-            ADD_CONFIRM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_confirm),
-                CallbackQueryHandler(confirm_callback)
-            ],
-
-            EDIT_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_text_save)],
-            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & ~filters.COMMAND, edit_media_save)],
-            EDIT_BUTTON: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_button_save)],
-            EDIT_REPEAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_repeat_save)],
-            EDIT_PERIOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_period_save)],
-            EDIT_START_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_start_date_save)],
-            EDIT_END_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_end_date_save)],
-        },
-        fallbacks=[],
-        allow_reentry=True
+        interval=60,
+        first=10
     )
