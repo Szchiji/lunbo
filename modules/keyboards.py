@@ -1,13 +1,21 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 def schedule_list_menu(schedules):
+    """
+    生成定时消息列表菜单
+    - 每条显示状态(✅/❌)、频率、文本摘要
+    - 支持“暂无定时消息”
+    - 必有“➕ 添加定时消息”按钮
+    """
     keyboard = []
     if schedules and len(schedules) > 0:
         for sch in schedules:
-            txt = sch.get('text', '')[:18].replace('\n', ' ') + ("..." if len(sch.get('text', '')) > 18 else "")
+            status = "✅" if sch.get('status', 1) else "❌"
             repeat = sch.get('repeat_seconds', 0)
             rep_str = f"{repeat//60}分钟" if repeat else "单次"
-            status = "✅" if sch.get('status', 1) else "❌"
+            txt = sch.get('text', '')[:18].replace('\n', ' ')
+            if len(sch.get('text', '')) > 18:
+                txt += "..."
             btn_text = f"{status} {rep_str} | {txt}" if txt else f"{status} {rep_str}"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"edit_menu_{sch['id']}")])
     else:
