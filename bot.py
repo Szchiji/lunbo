@@ -2,13 +2,22 @@ import logging
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 )
-from config import BOT_TOKEN, WEBHOOK_URL, GROUP_IDS
+from config import BOT_TOKEN, WEBHOOK_URL, GROUPS
 from db import init_db
 from modules.scheduler import (
     show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
-    edit_text, edit_media, edit_button, edit_repeat, add_period, add_start_date, add_end_date, add_confirm,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
-    SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM
+    # 编辑相关
+    edit_text_entry, edit_text_save,
+    edit_media_entry, edit_media_save,
+    edit_button_entry, edit_button_save,
+    edit_repeat_entry, edit_repeat_save,
+    edit_period_entry, edit_period_save,
+    edit_start_date_entry, edit_start_date_save,
+    edit_end_date_entry, edit_end_date_save,
+    toggle_status, toggle_remove_last, toggle_pin, delete_schedule_callback,
+    SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
+    EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE
 )
 from modules.broadcast import schedule_broadcast_jobs
 
@@ -46,6 +55,7 @@ def main():
         ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
+
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
@@ -57,13 +67,36 @@ def main():
                 MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ],
+
+            # 编辑流程
+            EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
+            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
+            EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
+            EDIT_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save)],
+            EDIT_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save)],
+            EDIT_START_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date_save)],
+            EDIT_END_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date_save)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
             CallbackQueryHandler(cancel_callback, pattern='^cancel$'),
         ],
+        allow_reentry=True
     )
     application.add_handler(conv)
+
+    # 编辑菜单的回调（直接切换到编辑流程）
+    application.add_handler(CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_button_entry, pattern=r"^edit_button_\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_repeat_entry, pattern=r"^edit_repeat_\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_period_entry, pattern=r"^edit_time_period_\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_start_date_entry, pattern=r"^edit_start_date_\d+$"))
+    application.add_handler(CallbackQueryHandler(edit_end_date_entry, pattern=r"^edit_end_date_\d+$"))
+    application.add_handler(CallbackQueryHandler(toggle_status, pattern=r"^toggle_status_\d+$"))
+    application.add_handler(CallbackQueryHandler(toggle_remove_last, pattern=r"^toggle_remove_last_\d+$"))
+    application.add_handler(CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"))
+    application.add_handler(CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"))
 
     async def on_startup(app):
         await init_db()
