@@ -1,45 +1,25 @@
-import pprint
 import re
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
     update_schedule, update_schedule_multi, delete_schedule
 )
-from modules.keyboards import schedule_list_menu, schedule_edit_menu, schedule_add_menu
+from modules.keyboards import (
+    schedule_list_menu, schedule_edit_menu, schedule_add_menu, group_select_menu
+)
+from config import GROUPS
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 from datetime import datetime
 
 # 状态枚举
 (
-    SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, 
+    SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT,
     ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM
 ) = range(200, 209)
 
-# 可用群聊列表（可自己维护）
-GROUPS = [
-    {"chat_id": -1001234567890, "title": "群1"},
-    {"chat_id": -1009876543210, "title": "群2"},
-    # ... 你可以从数据库或配置文件动态维护
-]
-
-def group_select_menu():
-    buttons = [
-        [InlineKeyboardButton(g['title'], callback_data=f"set_group_{g['chat_id']}")]
-        for g in GROUPS
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-def schedule_add_menu(step=None):
-    if step == "confirm":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("保存", callback_data="confirm_save")],
-            [InlineKeyboardButton("取消", callback_data="cancel_add")]
-        ])
-    return None
-
 def parse_datetime_input(text):
     text = text.strip()
-    if text in ["0", "留空", "不限"]:
+    if text in ["0", "留空", "不限", ""]:
         return ""
     m1 = re.match(r"^\d{4}-\d{2}-\d{2}$", text)
     m2 = re.match(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$", text)
@@ -66,7 +46,7 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # ========== 添加流程 ==========
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu())
+    await update.message.reply_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu(GROUPS))
     return SELECT_GROUP
 
 async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +55,7 @@ async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("set_group_"):
         group_id = int(data[len("set_group_"):])
         context.user_data["selected_group_id"] = group_id
-        await query.edit_message_text(f"已选择群聊：{group_id}，请继续设置定时消息。\n请输入文本内容：")
+        await query.edit_message_text(f"已选择群聊：{GROUPS.get(group_id, group_id)}，请继续设置定时消息。\n请输入文本内容：")
         context.user_data["new_schedule"] = {}
         return ADD_TEXT
     await query.answer("请选择群聊")
@@ -209,7 +189,7 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
 
-# ========== 定时推送 ==========
+# ========== 定时推送/删除上一条 ==========
 def is_schedule_active(sch):
     if not sch.get("status", 1):
         return False
@@ -232,26 +212,44 @@ def is_schedule_active(sch):
     return True
 
 async def broadcast_task(context):
-    group_ids = [g['chat_id'] for g in GROUPS]
+    # 支持删除上一条
+    if "last_sent" not in context.bot_data:
+        context.bot_data["last_sent"] = {}
+    last_sent = context.bot_data["last_sent"]
+    group_ids = list(GROUPS.keys()) if isinstance(GROUPS, dict) else [g['chat_id'] for g in GROUPS]
     for chat_id in group_ids:
         schedules = await fetch_schedules(chat_id)
         for sch in schedules:
             if is_schedule_active(sch):
+                key = (chat_id, sch["id"])
+                # 删除上一条
+                if sch.get("remove_last"):
+                    last_msg_id = last_sent.get(key)
+                    if last_msg_id:
+                        try:
+                            await context.bot.delete_message(chat_id, last_msg_id)
+                        except Exception as e:
+                            print(f"删除上一条消息失败 chat_id={chat_id} schedule_id={sch['id']} err={e}")
+                # 发送新消息
                 try:
+                    msg = None
                     if sch.get("media_url"):
                         if sch["media_url"].endswith((".jpg", ".png")) or sch["media_url"].startswith("AgAC"):
-                            await context.bot.send_photo(chat_id, sch["media_url"], caption=sch["text"])
+                            msg = await context.bot.send_photo(chat_id, sch["media_url"], caption=sch["text"])
                         elif sch["media_url"].endswith((".mp4",)) or sch["media_url"].startswith("BAAC"):
-                            await context.bot.send_video(chat_id, sch["media_url"], caption=sch["text"])
+                            msg = await context.bot.send_video(chat_id, sch["media_url"], caption=sch["text"])
                         else:
-                            await context.bot.send_message(chat_id, sch["text"] + f"\n[媒体] {sch['media_url']}")
+                            msg = await context.bot.send_message(chat_id, sch["text"] + f"\n[媒体] {sch['media_url']}")
                     else:
                         if sch.get("button_text") and sch.get("button_url"):
                             reply_markup = InlineKeyboardMarkup(
                                 [[InlineKeyboardButton(sch["button_text"], url=sch["button_url"])]])
-                            await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
+                            msg = await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
                         else:
-                            await context.bot.send_message(chat_id, sch["text"])
+                            msg = await context.bot.send_message(chat_id, sch["text"])
+                    # 记录最新消息id
+                    if msg:
+                        last_sent[key] = msg.message_id
                 except Exception as e:
                     print(f"推送到群{chat_id}出错：", e)
 
@@ -268,15 +266,15 @@ def get_scheduler_conversation_handler():
         entry_points=[MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule)],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
-            ADD_TEXT: [MessageHandler(filters.TEXT, add_text)],
-            ADD_MEDIA: [MessageHandler(filters.ALL, add_media)],
-            ADD_BUTTON: [MessageHandler(filters.TEXT, add_button)],
-            ADD_REPEAT: [MessageHandler(filters.TEXT, add_repeat)],
-            ADD_PERIOD: [MessageHandler(filters.TEXT, add_period)],
-            ADD_START_DATE: [MessageHandler(filters.TEXT, add_start_date)],
-            ADD_END_DATE: [MessageHandler(filters.TEXT, add_end_date)],
+            ADD_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_text)],
+            ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & ~filters.COMMAND, add_media)],
+            ADD_BUTTON: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_button)],
+            ADD_REPEAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_repeat)],
+            ADD_PERIOD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_period)],
+            ADD_START_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_start_date)],
+            ADD_END_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_end_date)],
             ADD_CONFIRM: [
-                MessageHandler(filters.TEXT, add_confirm),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ]
         },
