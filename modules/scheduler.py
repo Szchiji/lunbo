@@ -31,6 +31,40 @@ def admin_only(func):
         return await func(update, context, *args, **kwargs)
     return wrapper
 
+# ========== 帮助/欢迎 ==========
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🤖 群定时消息机器人 帮助\n"
+        "\n"
+        "/help - 显示本帮助\n"
+        "/schedule - 管理本群定时消息\n"
+        "\n"
+        "管理员可通过菜单添加、编辑、删除定时推送，支持文本、图片、视频、按钮、重复周期、指定时段/日期、自动删除上一条等高级功能。\n"
+        "\n"
+        "如需手动取消流程，发送 /cancel\n"
+        "如需进一步支持请联系机器人管理员。"
+    )
+    if update.message:
+        await update.message.reply_text(text)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text)
+
+async def show_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "🤖 欢迎使用群定时消息机器人！\n"
+        "\n"
+        "• 使用 /schedule 管理定时消息\n"
+        "• 使用 /help 查看详细帮助\n"
+        "\n"
+        "支持文本、图片/视频、按钮、自定义重复、时段、日期、自动删除上一条等高级群推送。\n"
+        "\n"
+        "如需退出任何操作，请发送 /cancel"
+    )
+    if update.message:
+        await update.message.reply_text(text)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text)
+
 # ========== 工具 ==========
 def parse_datetime_input(text):
     text = text.strip()
