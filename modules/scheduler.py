@@ -1,8 +1,7 @@
 import re
-import time
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
-    update_schedule, update_schedule_multi, delete_schedule
+    update_schedule_multi, delete_schedule
 )
 from modules.keyboards import (
     schedule_list_menu, schedule_edit_menu, schedule_add_menu, group_select_menu
@@ -29,39 +28,6 @@ def admin_only(func):
             return ConversationHandler.END
         return await func(update, context, *args, **kwargs)
     return wrapper
-
-async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🤖 群定时消息机器人 帮助\n"
-        "\n"
-        "/help - 显示本帮助\n"
-        "/schedule - 管理群定时消息\n"
-        "\n"
-        "管理员可通过菜单添加、编辑、删除定时推送，支持文本、图片、视频、按钮、重复周期、指定时段/日期、自动删除上一条等高级功能。\n"
-        "\n"
-        "如需手动取消流程，发送 /cancel\n"
-        "如需进一步支持请联系机器人管理员。"
-    )
-    if getattr(update, "message", None):
-        await update.message.reply_text(text)
-    elif getattr(update, "callback_query", None):
-        await update.callback_query.edit_message_text(text)
-
-async def show_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🤖 欢迎使用群定时消息机器人！\n"
-        "\n"
-        "• 使用 /schedule 管理定时消息\n"
-        "• 使用 /help 查看详细帮助\n"
-        "\n"
-        "支持文本、图片/视频、按钮、自定义重复、时段、日期、自动删除上一条等高级群推送。\n"
-        "\n"
-        "如需退出任何操作，请发送 /cancel"
-    )
-    if getattr(update, "message", None):
-        await update.message.reply_text(text)
-    elif getattr(update, "callback_query", None):
-        await update.callback_query.edit_message_text(text)
 
 def parse_datetime_input(text):
     text = text.strip()
@@ -273,10 +239,17 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
     sch = await fetch_schedule(schedule_id)
+    # 展示完整文本与菜单
+    desc = f"【定时消息设置】\n{sch.get('text','')}\n"
+    if sch.get('media_url'):
+        desc += f"\n[已含媒体]"
+    if sch.get('button_text'):
+        desc += f"\n[包含按钮：{sch['button_text']}]"
     await update.callback_query.edit_message_text(
-        f"【定时消息设置】\n文本：{sch.get('text','')}\n...",
+        desc,
         reply_markup=schedule_edit_menu(sch)
     )
+    return ConversationHandler.END
 
 @admin_only
 async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -451,77 +424,3 @@ async def delete_schedule_callback(update: Update, context: ContextTypes.DEFAULT
     schedule_id = int(update.callback_query.data.split("_")[-1])
     await delete_schedule(schedule_id)
     await update.callback_query.edit_message_text("定时消息已删除。")
-
-def is_schedule_active(sch):
-    if not sch.get("status", 1):
-        return False
-    now = datetime.utcnow()
-    fmt = "%Y-%m-%d %H:%M"
-    if sch.get("start_date"):
-        try:
-            start = datetime.strptime(sch["start_date"], fmt)
-            if now < start:
-                return False
-        except Exception:
-            pass
-    if sch.get("end_date"):
-        try:
-            end = datetime.strptime(sch["end_date"], fmt)
-            if now > end:
-                return False
-        except Exception:
-            pass
-    return True
-
-async def broadcast_task(context):
-    if "last_sent" not in context.bot_data:
-        context.bot_data["last_sent"] = {}
-    last_sent = context.bot_data["last_sent"]
-    now = time.time()
-    group_ids = list(GROUPS.keys()) if isinstance(GROUPS, dict) else [g['chat_id'] for g in GROUPS]
-    for chat_id in group_ids:
-        schedules = await fetch_schedules(chat_id)
-        for sch in schedules:
-            if not is_schedule_active(sch):
-                continue
-            key = (chat_id, sch["id"])
-            repeat_sec = sch.get("repeat_seconds", 0) or 60
-            last_time = last_sent.get((key, "time"), 0)
-            if now - last_time < repeat_sec:
-                continue
-            if sch.get("remove_last"):
-                last_msg_id = last_sent.get(key)
-                if last_msg_id:
-                    try:
-                        await context.bot.delete_message(chat_id, last_msg_id)
-                    except Exception as e:
-                        print(f"删除上一条消息失败 chat_id={chat_id} schedule_id={sch['id']} err={e}")
-            reply_markup = None
-            if sch.get("button_text") and sch.get("button_url"):
-                reply_markup = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton(sch["button_text"], url=sch["button_url"])]]
-                )
-            msg = None
-            if sch.get("media_url"):
-                if sch["media_url"].endswith((".jpg", ".png")) or sch["media_url"].startswith("AgAC"):
-                    msg = await context.bot.send_photo(chat_id, sch["media_url"], caption=sch["text"], reply_markup=reply_markup)
-                elif sch["media_url"].endswith((".mp4",)) or sch["media_url"].startswith("BAAC"):
-                    msg = await context.bot.send_video(chat_id, sch["media_url"], caption=sch["text"], reply_markup=reply_markup)
-                else:
-                    msg = await context.bot.send_message(chat_id, sch["text"] + f"\n[媒体] {sch['media_url']}", reply_markup=reply_markup)
-            else:
-                msg = await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
-            if msg:
-                last_sent[key] = msg.message_id
-                last_sent[(key, "time")] = now
-
-def schedule_broadcast_jobs(application):
-    application.job_queue.run_repeating(
-        broadcast_task,
-        interval=60,
-        first=10
-    )
-
-# 便于主入口直接import
-fetch_schedules = fetch_schedules
-schedule_list_menu = schedule_list_menu
