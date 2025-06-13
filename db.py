@@ -70,8 +70,6 @@ async def delete_schedule(schedule_id):
         await db.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
         await db.commit()
 
-
-# 初始化表结构
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
