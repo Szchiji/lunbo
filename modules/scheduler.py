@@ -5,8 +5,8 @@ from db import (
     update_schedule, update_schedule_multi, delete_schedule
 )
 from modules.keyboards import schedule_list_menu, schedule_edit_menu, schedule_add_menu
-from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 
 EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_DATE = range(6)
 ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM = range(100, 108)  # 8 items
@@ -144,6 +144,18 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
     return ConversationHandler.END
 
 # ========== 添加流程 ==========
+
+def schedule_add_menu(step=None):
+    # 支持 confirm 步骤用 InlineKeyboard
+    if step == "confirm":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("保存", callback_data="confirm_save")],
+            [InlineKeyboardButton("取消", callback_data="cancel_add")]
+        ])
+    # 其它步骤使用默认
+    # 你可以根据其他 step 返回不同的键盘，这里略
+    return None
+
 async def add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     context.user_data['new_schedule']['text'] = text
@@ -226,11 +238,36 @@ async def add_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"重复：每{sch.get('repeat_seconds',0)//60}分钟\n"
         f"时间段：{sch.get('time_period','全天')}\n"
         f"日期：{sch.get('start_date','--')} ~ {sch.get('end_date','--')}\n\n"
-        "请发送“保存”确认添加，或发送“取消”放弃。"
+        "请点击“保存”按钮确认添加，或点击“取消”放弃。"
     )
     await update.message.reply_text(desc, reply_markup=schedule_add_menu(step="confirm"))
     return ADD_CONFIRM
 
+# 支持点 inline button 保存
+async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query.data == "confirm_save":
+        chat_id = update.effective_chat.id
+        sch = context.user_data.get('new_schedule')
+        print("DEBUG: chat_id =", chat_id)
+        print("DEBUG: sch =")
+        pprint.pprint(sch)
+        await create_schedule(chat_id, sch)
+        print("DEBUG: create_schedule已调用")
+        await query.edit_message_text("定时消息已添加。")
+        await show_schedule_list(update, context)
+        context.user_data.pop("new_schedule", None)
+        return ConversationHandler.END
+    elif query.data == "cancel_add":
+        await query.edit_message_text("已取消添加。")
+        context.user_data.pop("new_schedule", None)
+        await show_schedule_list(update, context)
+        return ConversationHandler.END
+    else:
+        await query.answer("未知操作")
+        return ADD_CONFIRM
+
+# 兼容文本输入“保存”/“取消”
 async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text in ["保存", "确认"]:
@@ -251,7 +288,7 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_schedule_list(update, context)
         return ConversationHandler.END
     else:
-        await update.message.reply_text("请发送“保存”确认添加，或发送“取消”放弃。")
+        await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
 
 # ========== 编辑流程 ==========
