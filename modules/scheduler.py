@@ -86,7 +86,7 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return SELECT_GROUP
         schedules = await fetch_schedules(group_id)
-        group_name = GROUPS[group_id] if isinstance(GROUPS, dict) else str(group_id)
+        group_name = GROUPS.get(group_id) or GROUPS.get(str(group_id)) or str(group_id)
         await update.message.reply_text(
             f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
             reply_markup=schedule_list_menu(schedules)
@@ -108,7 +108,7 @@ async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("set_group_"):
         group_id = int(data[len("set_group_"):])
         context.user_data["selected_group_id"] = group_id
-        group_title = GROUPS[group_id] if isinstance(GROUPS, dict) else group_id
+        group_title = GROUPS.get(group_id) or GROUPS.get(str(group_id)) or str(group_id)
         schedules = await fetch_schedules(group_id)
         await query.edit_message_text(
             f"⏰ [{group_title}] 定时消息列表：\n点击条目可设置。",
@@ -271,6 +271,16 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
+
+# ======= 编辑菜单入口 =======
+@admin_only
+async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule_id = int(update.callback_query.data.split("_")[-1])
+    sch = await fetch_schedule(schedule_id)
+    await update.callback_query.edit_message_text(
+        f"【定时消息设置】\n文本：{sch.get('text','')}\n...",
+        reply_markup=schedule_edit_menu(sch)
+    )
 
 @admin_only
 async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -515,3 +525,17 @@ def schedule_broadcast_jobs(application):
         interval=60,
         first=10
     )
+
+# ========== 菜单生成 ==========
+
+def schedule_list_menu(schedules):
+    keyboard = []
+    for sch in schedules:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"✅ {sch['repeat_seconds']//60}分钟 | {sch.get('text','')[:5]}",
+                callback_data=f"edit_menu_{sch['id']}"
+            )
+        ])
+    keyboard.append([InlineKeyboardButton("➕添加定时消息", callback_data="add_schedule")])
+    return InlineKeyboardMarkup(keyboard)
