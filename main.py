@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 )
@@ -75,7 +76,6 @@ def main():
             MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
         ],
         states={
-            # ...（同你当前代码）...
             SELECT_GROUP: [
                 CallbackQueryHandler(select_group_callback, pattern="^set_group_")
             ],
@@ -123,15 +123,24 @@ def main():
     async def on_startup(app):
         await init_db()
         logging.info("数据库初始化完成")
+        # 启动定时群发任务
+        global bg_task
+        bg_task = asyncio.create_task(
+            scheduled_sender(application, list(GROUPS.keys()))
+        )
+
+    async def on_shutdown(app):
+        global bg_task
+        if bg_task:
+            bg_task.cancel()
+            try:
+                await bg_task
+            except asyncio.CancelledError:
+                pass
+        logging.info("后台任务已关闭。")
 
     application.post_init = on_startup
-
-    # 启动定时群发任务（指定所有群/频道）
-    target_chat_ids = list(GROUPS.keys())
-    import asyncio
-    asyncio.get_event_loop().create_task(
-        scheduled_sender(application, target_chat_ids)
-    )
+    application.post_shutdown = on_shutdown
 
     # Render生产环境端口绑定
     port = int(os.environ.get("PORT", 8080))
@@ -142,4 +151,5 @@ def main():
     )
 
 if __name__ == '__main__':
+    bg_task = None
     main()
