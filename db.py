@@ -192,4 +192,3 @@ async def init_db():
             )
             """)
             await db.commit()
-        
