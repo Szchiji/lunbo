@@ -3,6 +3,9 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 
 def is_schedule_active(sch):
+    """
+    判断定时任务是否处于激活状态（启用、在有效日期区间内）
+    """
     if not sch.get("status", 1):
         return False
     now = datetime.utcnow()
@@ -24,6 +27,9 @@ def is_schedule_active(sch):
     return True
 
 async def broadcast_task(context):
+    """
+    定时任务：遍历群组，判断并推送定时消息
+    """
     if "last_sent" not in context.bot_data:
         context.bot_data["last_sent"] = {}  # {(chat_id, schedule_id): message_id}
     last_sent = context.bot_data["last_sent"]
@@ -65,6 +71,9 @@ async def broadcast_task(context):
                     print(f"[推送到群{chat_id}出错]：{e}")
 
 def schedule_broadcast_jobs(application, group_ids):
+    """
+    注册定时群推送任务
+    """
     application.bot_data["group_ids"] = group_ids
     application.job_queue.run_repeating(
         broadcast_task,
