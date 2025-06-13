@@ -22,9 +22,9 @@ def admin_only(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = update.effective_user.id
         if user_id not in ADMINS:
-            if update.message:
+            if getattr(update, "message", None):
                 await update.message.reply_text("无权限。")
-            elif update.callback_query:
+            elif getattr(update, "callback_query", None):
                 await update.callback_query.answer("无权限", show_alert=True)
             return ConversationHandler.END
         return await func(update, context, *args, **kwargs)
@@ -42,9 +42,9 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "如需手动取消流程，发送 /cancel\n"
         "如需进一步支持请联系机器人管理员。"
     )
-    if update.message:
+    if getattr(update, "message", None):
         await update.message.reply_text(text)
-    elif update.callback_query:
+    elif getattr(update, "callback_query", None):
         await update.callback_query.edit_message_text(text)
 
 async def show_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -58,9 +58,9 @@ async def show_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n"
         "如需退出任何操作，请发送 /cancel"
     )
-    if update.message:
+    if getattr(update, "message", None):
         await update.message.reply_text(text)
-    elif update.callback_query:
+    elif getattr(update, "callback_query", None):
         await update.callback_query.edit_message_text(text)
 
 def parse_datetime_input(text):
@@ -77,29 +77,26 @@ def parse_datetime_input(text):
 
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type == "private":
+    chat = update.effective_chat
+    if chat.type == "private":
         group_id = context.user_data.get("selected_group_id")
         if not group_id:
-            await update.message.reply_text(
-                "请选择要管理的群聊：",
-                reply_markup=group_select_menu(GROUPS)
-            )
+            if getattr(update, "message", None):
+                await update.message.reply_text("请选择要管理的群聊：", reply_markup=group_select_menu(GROUPS))
+            elif getattr(update, "callback_query", None):
+                await update.callback_query.edit_message_text("请选择要管理的群聊：", reply_markup=group_select_menu(GROUPS))
             return SELECT_GROUP
         schedules = await fetch_schedules(group_id)
         group_name = GROUPS.get(group_id) or GROUPS.get(str(group_id)) or str(group_id)
-        await update.message.reply_text(
-            f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
-            reply_markup=schedule_list_menu(schedules)
-        )
-        return ConversationHandler.END
+        if getattr(update, "message", None):
+            await update.message.reply_text(f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。", reply_markup=schedule_list_menu(schedules))
+        elif getattr(update, "callback_query", None):
+            await update.callback_query.edit_message_text(f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。", reply_markup=schedule_list_menu(schedules))
     else:
-        chat_id = update.effective_chat.id
+        chat_id = chat.id
         schedules = await fetch_schedules(chat_id)
-        await update.message.reply_text(
-            "⏰ 定时消息列表：\n点击条目可设置。",
-            reply_markup=schedule_list_menu(schedules)
-        )
-        return ConversationHandler.END
+        await update.message.reply_text("⏰ 定时消息列表：\n点击条目可设置。", reply_markup=schedule_list_menu(schedules))
+    return ConversationHandler.END
 
 @admin_only
 async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -120,23 +117,23 @@ async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 @admin_only
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = getattr(update, "callback_query", None)
+    message = getattr(update, "message", None)
     if update.effective_chat.type == "private":
         group_id = context.user_data.get("selected_group_id")
         if not group_id:
-            if getattr(update, "callback_query", None):
-                await update.callback_query.answer()
-                await update.callback_query.edit_message_text(
-                    "请选择要设置定时消息的群聊：",
-                    reply_markup=group_select_menu(GROUPS)
-                )
-            else:
-                await update.message.reply_text(
-                    "请选择要设置定时消息的群聊：",
-                    reply_markup=group_select_menu(GROUPS)
-                )
+            if query:
+                await query.answer()
+                await query.edit_message_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu(GROUPS))
+            elif message:
+                await message.reply_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu(GROUPS))
             return SELECT_GROUP
     context.user_data["new_schedule"] = {}
-    await update.message.reply_text("请输入文本内容：")
+    if query:
+        await query.answer()
+        await query.edit_message_text("请输入文本内容：")
+    elif message:
+        await message.reply_text("请输入文本内容：")
     return ADD_TEXT
 
 @admin_only
