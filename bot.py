@@ -7,6 +7,7 @@ from db import init_db
 from modules.scheduler import (
     show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
+    edit_menu_entry,  # 新增：点击列表条目进入编辑菜单
     edit_text_entry, edit_text_save,
     edit_media_entry, edit_media_save,
     edit_button_entry, edit_button_save,
@@ -43,7 +44,7 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", show_help))
-    # 注意：不要单独注册 CommandHandler("schedule", ...) 否则状态机会乱
+    # 不要单独注册 CommandHandler("schedule", ...)！
 
     conv = ConversationHandler(
         entry_points=[
@@ -86,7 +87,8 @@ def main():
     )
     application.add_handler(conv)
 
-    # 编辑菜单的回调
+    # 编辑菜单回调：点击定时消息列表条目进入编辑菜单
+    application.add_handler(CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_button_entry, pattern=r"^edit_button_\d+$"))
@@ -106,7 +108,7 @@ def main():
 
     application.post_init = on_startup
 
-    # 推荐先用 polling 调试，部署云服务器再用 webhook
+    # 推荐开发时先用 polling 调试（注释掉 run_webhook）
     # application.run_polling()
     application.run_webhook(
         listen="0.0.0.0",
