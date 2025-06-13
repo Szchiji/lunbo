@@ -97,7 +97,18 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ========== 添加流程 ==========
 @admin_only
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu(GROUPS))
+    # 修正：兼容菜单按钮和文字消息两种入口
+    if getattr(update, "callback_query", None):
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            "请选择要设置定时消息的群聊：",
+            reply_markup=group_select_menu(GROUPS)
+        )
+    else:
+        await update.message.reply_text(
+            "请选择要设置定时消息的群聊：",
+            reply_markup=group_select_menu(GROUPS)
+        )
     return SELECT_GROUP
 
 @admin_only
@@ -502,7 +513,10 @@ def schedule_broadcast_jobs(application):
 # ========== ConversationHandler ==========
 def get_scheduler_conversation_handler():
     return ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule)],
+        entry_points=[
+            MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$")  # 必须加此项，菜单按钮才能进入流程
+        ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
 
