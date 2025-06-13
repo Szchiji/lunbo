@@ -9,7 +9,7 @@ from modules.keyboards import (
 )
 from config import GROUPS, ADMINS
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import ContextTypes, ConversationHandler
 from datetime import datetime
 
 (
@@ -272,7 +272,6 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
 
-# ======= 编辑菜单入口 =======
 @admin_only
 async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
@@ -526,16 +525,6 @@ def schedule_broadcast_jobs(application):
         first=10
     )
 
-# ========== 菜单生成 ==========
-
-def schedule_list_menu(schedules):
-    keyboard = []
-    for sch in schedules:
-        keyboard.append([
-            InlineKeyboardButton(
-                f"✅ {sch['repeat_seconds']//60}分钟 | {sch.get('text','')[:5]}",
-                callback_data=f"edit_menu_{sch['id']}"
-            )
-        ])
-    keyboard.append([InlineKeyboardButton("➕添加定时消息", callback_data="add_schedule")])
-    return InlineKeyboardMarkup(keyboard)
+# 便于主入口直接import
+fetch_schedules = fetch_schedules
+schedule_list_menu = schedule_list_menu
