@@ -1,4 +1,5 @@
 import re
+import time
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
     update_schedule, update_schedule_multi, delete_schedule
@@ -97,7 +98,7 @@ async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ========== 添加流程 ==========
 @admin_only
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 修正：兼容菜单按钮和文字消息两种入口
+    # 支持按钮入口和消息入口
     if getattr(update, "callback_query", None):
         await update.callback_query.answer()
         await update.callback_query.edit_message_text(
@@ -462,46 +463,49 @@ def is_schedule_active(sch):
     return True
 
 async def broadcast_task(context):
-    # 支持删除上一条
     if "last_sent" not in context.bot_data:
         context.bot_data["last_sent"] = {}
     last_sent = context.bot_data["last_sent"]
+    now = time.time()
     group_ids = list(GROUPS.keys()) if isinstance(GROUPS, dict) else [g['chat_id'] for g in GROUPS]
     for chat_id in group_ids:
         schedules = await fetch_schedules(chat_id)
         for sch in schedules:
-            if is_schedule_active(sch):
-                key = (chat_id, sch["id"])
-                # 删除上一条
-                if sch.get("remove_last"):
-                    last_msg_id = last_sent.get(key)
-                    if last_msg_id:
-                        try:
-                            await context.bot.delete_message(chat_id, last_msg_id)
-                        except Exception as e:
-                            print(f"删除上一条消息失败 chat_id={chat_id} schedule_id={sch['id']} err={e}")
-                # 发送新消息
-                try:
-                    msg = None
-                    if sch.get("media_url"):
-                        if sch["media_url"].endswith((".jpg", ".png")) or sch["media_url"].startswith("AgAC"):
-                            msg = await context.bot.send_photo(chat_id, sch["media_url"], caption=sch["text"])
-                        elif sch["media_url"].endswith((".mp4",)) or sch["media_url"].startswith("BAAC"):
-                            msg = await context.bot.send_video(chat_id, sch["media_url"], caption=sch["text"])
-                        else:
-                            msg = await context.bot.send_message(chat_id, sch["text"] + f"\n[媒体] {sch['media_url']}")
-                    else:
-                        if sch.get("button_text") and sch.get("button_url"):
-                            reply_markup = InlineKeyboardMarkup(
-                                [[InlineKeyboardButton(sch["button_text"], url=sch["button_url"])]])
-                            msg = await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
-                        else:
-                            msg = await context.bot.send_message(chat_id, sch["text"])
-                    # 记录最新消息id
-                    if msg:
-                        last_sent[key] = msg.message_id
-                except Exception as e:
-                    print(f"推送到群{chat_id}出错：", e)
+            if not is_schedule_active(sch):
+                continue
+            key = (chat_id, sch["id"])
+            repeat_sec = sch.get("repeat_seconds", 0) or 60
+            last_time = last_sent.get((key, "time"), 0)
+            if now - last_time < repeat_sec:
+                continue  # 未到间隔时间
+            # 删除上一条
+            if sch.get("remove_last"):
+                last_msg_id = last_sent.get(key)
+                if last_msg_id:
+                    try:
+                        await context.bot.delete_message(chat_id, last_msg_id)
+                    except Exception as e:
+                        print(f"删除上一条消息失败 chat_id={chat_id} schedule_id={sch['id']} err={e}")
+            # 发送新消息（无论文本还是媒体都支持按钮）
+            reply_markup = None
+            if sch.get("button_text") and sch.get("button_url"):
+                reply_markup = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(sch["button_text"], url=sch["button_url"])]]
+                )
+            msg = None
+            if sch.get("media_url"):
+                if sch["media_url"].endswith((".jpg", ".png")) or sch["media_url"].startswith("AgAC"):
+                    msg = await context.bot.send_photo(chat_id, sch["media_url"], caption=sch["text"], reply_markup=reply_markup)
+                elif sch["media_url"].endswith((".mp4",)) or sch["media_url"].startswith("BAAC"):
+                    msg = await context.bot.send_video(chat_id, sch["media_url"], caption=sch["text"], reply_markup=reply_markup)
+                else:
+                    msg = await context.bot.send_message(chat_id, sch["text"] + f"\n[媒体] {sch['media_url']}", reply_markup=reply_markup)
+            else:
+                msg = await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
+            # 记录最新消息id和时间
+            if msg:
+                last_sent[key] = msg.message_id
+                last_sent[(key, "time")] = now
 
 def schedule_broadcast_jobs(application):
     application.job_queue.run_repeating(
@@ -515,7 +519,9 @@ def get_scheduler_conversation_handler():
     return ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
-            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$")  # 必须加此项，菜单按钮才能进入流程
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
+            MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),  # 支持 /schedule 命令直接查看
+            MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list) # 支持“查看定时消息”文本
         ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
