@@ -25,6 +25,9 @@ from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
 
+async def start(update, context):
+    await update.message.reply_text("欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。")
+
 async def cancel(update, context):
     if update.message:
         await update.message.reply_text("已取消操作。")
@@ -58,6 +61,9 @@ async def cancel_callback(update, context):
 
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # 注册 /start 命令
+    application.add_handler(CommandHandler("start", start))
 
     conv = ConversationHandler(
         entry_points=[
