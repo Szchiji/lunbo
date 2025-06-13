@@ -1,6 +1,9 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 def schedule_list_menu(schedules):
+    """
+    生成定时消息列表菜单
+    """
     keyboard = []
     for sch in schedules:
         txt = sch['text'][:20] + ("..." if len(sch['text']) > 20 else "")
@@ -9,6 +12,9 @@ def schedule_list_menu(schedules):
     return InlineKeyboardMarkup(keyboard)
 
 def schedule_edit_menu(schedule):
+    """
+    生成定时消息编辑菜单
+    """
     keyboard = [
         [
             InlineKeyboardButton(f"状态: {'✅启用' if schedule['status'] else '❌关闭'}", callback_data=f"toggle_status_{schedule['id']}"),
@@ -36,7 +42,9 @@ def schedule_edit_menu(schedule):
     return InlineKeyboardMarkup(keyboard)
 
 def schedule_add_menu(step=None):
-    # 可以根据 step 定制不同阶段的菜单
+    """
+    生成添加定时消息时的确认菜单
+    """
     btns = []
     if step == "confirm":
         btns = [
