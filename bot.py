@@ -2,12 +2,12 @@ import logging
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 )
-from config import BOT_TOKEN, WEBHOOK_URL
+from config import BOT_TOKEN, WEBHOOK_URL, GROUPS
 from db import init_db
 from modules.scheduler import (
     show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
-    edit_menu_entry,  # 新增：点击列表条目进入编辑菜单
+    edit_menu_entry,
     edit_text_entry, edit_text_save,
     edit_media_entry, edit_media_save,
     edit_button_entry, edit_button_save,
@@ -18,10 +18,11 @@ from modules.scheduler import (
     toggle_status, toggle_remove_last, toggle_pin, delete_schedule_callback,
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
-    show_help, show_welcome, schedule_broadcast_jobs
+    show_help, show_welcome, schedule_broadcast_jobs, fetch_schedules, schedule_list_menu
 )
+from telegram.error import BadRequest
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 async def start(update, context):
     await show_welcome(update, context)
@@ -36,15 +37,27 @@ async def cancel(update, context):
 
 async def cancel_callback(update, context):
     query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("已取消操作。")
+    try:
+        # 尝试删除当前菜单
+        await query.delete_message()
+    except Exception:
+        pass
+    # 返回定时消息主列表
+    group_id = context.user_data.get("selected_group_id")
+    if not group_id and hasattr(query.message.chat, "id"):
+        group_id = query.message.chat.id
+    schedules = await fetch_schedules(group_id)
+    group_name = GROUPS.get(group_id) or str(group_id)
+    await query.message.chat.send_message(
+        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
+        reply_markup=schedule_list_menu(schedules)
+    )
     return ConversationHandler.END
 
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", show_help))
-    # 不要单独注册 CommandHandler("schedule", ...)！
 
     conv = ConversationHandler(
         entry_points=[
@@ -58,7 +71,6 @@ def main():
             SELECT_GROUP: [
                 CallbackQueryHandler(select_group_callback, pattern="^set_group_")
             ],
-
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
@@ -70,7 +82,6 @@ def main():
                 MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ],
-
             EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
             EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
             EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
@@ -87,7 +98,7 @@ def main():
     )
     application.add_handler(conv)
 
-    # 编辑菜单回调：点击定时消息列表条目进入编辑菜单
+    # 编辑菜单回调
     application.add_handler(CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"))
@@ -108,7 +119,7 @@ def main():
 
     application.post_init = on_startup
 
-    # 推荐开发时先用 polling 调试（注释掉 run_webhook）
+    # 建议开发调试用 polling，生产用 webhook
     # application.run_polling()
     application.run_webhook(
         listen="0.0.0.0",
