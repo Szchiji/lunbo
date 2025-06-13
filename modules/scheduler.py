@@ -309,8 +309,10 @@ async def edit_media_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media = update.message.text.strip()
         else:
             media = ""
+        print("[edit_media_save] schedule_id:", schedule_id, "media:", media, flush=True)
         await update_schedule_multi(schedule_id, media_url=media)
         sch = await fetch_schedule(schedule_id)
+        print("[edit_media_save] updated sch:", sch, flush=True)
         await _edit_menu_after(update, sch, "媒体已修改。")
         return ConversationHandler.END
     except Exception:
