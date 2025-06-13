@@ -7,7 +7,6 @@ from db import init_db
 from modules.scheduler import (
     show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
-    # 编辑相关
     edit_text_entry, edit_text_save,
     edit_media_entry, edit_media_save,
     edit_button_entry, edit_button_save,
@@ -22,7 +21,7 @@ from modules.scheduler import (
 )
 from modules.broadcast import schedule_broadcast_jobs
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)  # 开启debug日志
 
 async def start(update, context):
     await show_welcome(update, context)
@@ -54,7 +53,7 @@ def main():
         entry_points=[
             CommandHandler("schedule", schedule),
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
-            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$")   # 修正：支持菜单按钮
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$")
         ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
