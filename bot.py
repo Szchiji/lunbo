@@ -17,11 +17,10 @@ from modules.scheduler import (
     toggle_status, toggle_remove_last, toggle_pin, delete_schedule_callback,
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
-    show_help, show_welcome
+    show_help, show_welcome, broadcast_task, schedule_broadcast_jobs
 )
-from modules.broadcast import schedule_broadcast_jobs
 
-logging.basicConfig(level=logging.DEBUG)  # 开启debug日志
+logging.basicConfig(level=logging.DEBUG)
 
 async def start(update, context):
     await show_welcome(update, context)
@@ -53,7 +52,9 @@ def main():
         entry_points=[
             CommandHandler("schedule", schedule),
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
-            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$")
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
+            MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
+            MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
         ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
@@ -87,7 +88,7 @@ def main():
     )
     application.add_handler(conv)
 
-    # 编辑菜单的回调（直接切换到编辑流程）
+    # 编辑菜单的回调
     application.add_handler(CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"))
     application.add_handler(CallbackQueryHandler(edit_button_entry, pattern=r"^edit_button_\d+$"))
@@ -106,6 +107,9 @@ def main():
         schedule_broadcast_jobs(app, list(GROUPS.keys()))
 
     application.post_init = on_startup
+
+    # 推荐先用 polling 调试，云端部署再用 webhook
+    # application.run_polling()
     application.run_webhook(
         listen="0.0.0.0",
         port=8080,
