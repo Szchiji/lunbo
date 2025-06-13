@@ -101,9 +101,9 @@ def main():
     application.add_handler(CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"))
 
     async def on_startup(app):
-        await init_db()
-        logging.info("数据库初始化完成")
-        schedule_broadcast_jobs(app)
+    await init_db()
+    logging.info("数据库初始化完成")
+    schedule_broadcast_jobs(app, list(GROUPS.keys()))
 
     application.post_init = on_startup
     application.run_webhook(
