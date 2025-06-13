@@ -6,9 +6,9 @@ def schedule_list_menu(schedules):
     """
     keyboard = []
     for sch in schedules:
-        txt = sch['text'][:20] + ("..." if len(sch['text']) > 20 else "")
+        txt = sch.get('text', '')[:20] + ("..." if len(sch.get('text', '')) > 20 else "")
         keyboard.append([InlineKeyboardButton(txt or "无文本", callback_data=f"edit_{sch['id']}")])
-    keyboard.append([InlineKeyboardButton("➕ 添加", callback_data="add_schedule")])
+    keyboard.append([InlineKeyboardButton("➕ 添加定时消息", callback_data="add_schedule")])
     return InlineKeyboardMarkup(keyboard)
 
 def schedule_edit_menu(schedule):
@@ -17,9 +17,9 @@ def schedule_edit_menu(schedule):
     """
     keyboard = [
         [
-            InlineKeyboardButton(f"状态: {'✅启用' if schedule['status'] else '❌关闭'}", callback_data=f"toggle_status_{schedule['id']}"),
-            InlineKeyboardButton(f"删除上一条: {'✅' if schedule['remove_last'] else '❌'}", callback_data=f"toggle_remove_last_{schedule['id']}"),
-            InlineKeyboardButton(f"置顶: {'✅' if schedule['pin'] else '❌'}", callback_data=f"toggle_pin_{schedule['id']}"),
+            InlineKeyboardButton(f"状态: {'✅启用' if schedule.get('status') else '❌关闭'}", callback_data=f"toggle_status_{schedule['id']}"),
+            InlineKeyboardButton(f"删除上一条: {'✅' if schedule.get('remove_last') else '❌'}", callback_data=f"toggle_remove_last_{schedule['id']}"),
+            InlineKeyboardButton(f"置顶: {'✅' if schedule.get('pin') else '❌'}", callback_data=f"toggle_pin_{schedule['id']}"),
         ],
         [
             InlineKeyboardButton("📝修改文本", callback_data=f"edit_text_{schedule['id']}"),
@@ -48,8 +48,18 @@ def schedule_add_menu(step=None):
     btns = []
     if step == "confirm":
         btns = [
-            [InlineKeyboardButton("保存", callback_data="save_add"), InlineKeyboardButton("取消", callback_data="cancel_add")]
+            [InlineKeyboardButton("保存", callback_data="confirm_save"), InlineKeyboardButton("取消", callback_data="cancel_add")]
         ]
     elif step:
         btns = [[InlineKeyboardButton("取消", callback_data="cancel_add")]]
     return InlineKeyboardMarkup(btns) if btns else None
+
+def group_select_menu(groups):
+    """
+    生成群聊选择菜单
+    :param groups: dict, 例如 {chat_id1: '群名1', chat_id2: '群名2'}
+    """
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(name, callback_data=f"set_group_{gid}")]
+        for gid, name in groups.items()
+    ])
