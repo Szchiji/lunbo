@@ -1,4 +1,5 @@
 import re
+import traceback
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
     update_schedule_multi, delete_schedule
@@ -111,10 +112,13 @@ async def add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def add_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.photo:
-        media = update.message.photo[-1].file_id
-    elif update.message.video:
+    media = ""
+    if update.message.video:
         media = update.message.video.file_id
+    elif update.message.photo:
+        media = update.message.photo[-1].file_id
+    elif update.message.document:
+        media = update.message.document.file_id
     elif update.message.text and update.message.text.strip().lower() != "无":
         media = update.message.text.strip()
     else:
@@ -271,12 +275,17 @@ async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def edit_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
-    new_text = update.message.text.strip()
-    await update_schedule_multi(schedule_id, text=new_text)
-    sch = await fetch_schedule(schedule_id)
-    await _edit_menu_after(update, sch, "文本已修改。")
-    return ConversationHandler.END
+    try:
+        schedule_id = context.user_data.get("edit_schedule_id")
+        new_text = update.message.text.strip()
+        await update_schedule_multi(schedule_id, text=new_text)
+        sch = await fetch_schedule(schedule_id)
+        await _edit_menu_after(update, sch, "文本已修改。")
+        return ConversationHandler.END
+    except Exception:
+        print(traceback.format_exc())
+        await update.message.reply_text("出现异常，修改未成功。")
+        return ConversationHandler.END
 
 @admin_only
 async def edit_media_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,19 +296,27 @@ async def edit_media_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def edit_media_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
-    if update.message.photo:
-        media = update.message.photo[-1].file_id
-    elif update.message.video:
-        media = update.message.video.file_id
-    elif update.message.text and update.message.text.strip().lower() != "无":
-        media = update.message.text.strip()
-    else:
+    try:
+        schedule_id = context.user_data.get("edit_schedule_id")
         media = ""
-    await update_schedule_multi(schedule_id, media_url=media)
-    sch = await fetch_schedule(schedule_id)
-    await _edit_menu_after(update, sch, "媒体已修改。")
-    return ConversationHandler.END
+        if update.message.video:
+            media = update.message.video.file_id
+        elif update.message.photo:
+            media = update.message.photo[-1].file_id
+        elif update.message.document:
+            media = update.message.document.file_id
+        elif update.message.text and update.message.text.strip().lower() != "无":
+            media = update.message.text.strip()
+        else:
+            media = ""
+        await update_schedule_multi(schedule_id, media_url=media)
+        sch = await fetch_schedule(schedule_id)
+        await _edit_menu_after(update, sch, "媒体已修改。")
+        return ConversationHandler.END
+    except Exception:
+        print(traceback.format_exc())
+        await update.message.reply_text("出现异常，修改未成功。")
+        return ConversationHandler.END
 
 @admin_only
 async def edit_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -310,22 +327,23 @@ async def edit_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def edit_button_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
-    text = update.message.text.strip()
-    if text.lower() == "无":
-        await update_schedule_multi(schedule_id, button_text="", button_url="")
-        sch = await fetch_schedule(schedule_id)
-        await _edit_menu_after(update, sch, "按钮已删除。")
-        return ConversationHandler.END
     try:
+        schedule_id = context.user_data.get("edit_schedule_id")
+        text = update.message.text.strip()
+        if text.lower() == "无":
+            await update_schedule_multi(schedule_id, button_text="", button_url="")
+            sch = await fetch_schedule(schedule_id)
+            await _edit_menu_after(update, sch, "按钮已删除。")
+            return ConversationHandler.END
         btn_text, btn_url = text.split(",", 1)
         await update_schedule_multi(schedule_id, button_text=btn_text.strip(), button_url=btn_url.strip())
         sch = await fetch_schedule(schedule_id)
         await _edit_menu_after(update, sch, "按钮已修改。")
+        return ConversationHandler.END
     except Exception:
+        print(traceback.format_exc())
         await update.message.reply_text("格式错误，请用英文逗号隔开，如：按钮文字,https://xxx.com。")
         return EDIT_BUTTON
-    return ConversationHandler.END
 
 @admin_only
 async def edit_repeat_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -336,16 +354,17 @@ async def edit_repeat_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def edit_repeat_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
     try:
+        schedule_id = context.user_data.get("edit_schedule_id")
         minutes = int(update.message.text.strip())
         await update_schedule_multi(schedule_id, repeat_seconds=minutes*60)
         sch = await fetch_schedule(schedule_id)
         await _edit_menu_after(update, sch, "重复时间已修改。")
+        return ConversationHandler.END
     except Exception:
+        print(traceback.format_exc())
         await update.message.reply_text("请输入整数分钟数。")
         return EDIT_REPEAT
-    return ConversationHandler.END
 
 @admin_only
 async def edit_period_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -356,17 +375,22 @@ async def edit_period_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def edit_period_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
-    period = update.message.text.strip()
-    if period in ["0", "留空", "不限", ""]:
-        period = ""
-    elif not re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", period):
-        await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
+    try:
+        schedule_id = context.user_data.get("edit_schedule_id")
+        period = update.message.text.strip()
+        if period in ["0", "留空", "不限", ""]:
+            period = ""
+        elif not re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", period):
+            await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
+            return EDIT_PERIOD
+        await update_schedule_multi(schedule_id, time_period=period)
+        sch = await fetch_schedule(schedule_id)
+        await _edit_menu_after(update, sch, "时间段已修改。")
+        return ConversationHandler.END
+    except Exception:
+        print(traceback.format_exc())
+        await update.message.reply_text("出现异常，修改未成功。")
         return EDIT_PERIOD
-    await update_schedule_multi(schedule_id, time_period=period)
-    sch = await fetch_schedule(schedule_id)
-    await _edit_menu_after(update, sch, "时间段已修改。")
-    return ConversationHandler.END
 
 @admin_only
 async def edit_start_date_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -377,16 +401,21 @@ async def edit_start_date_entry(update: Update, context: ContextTypes.DEFAULT_TY
 
 @admin_only
 async def edit_start_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
-    text = update.message.text.strip()
-    dt = parse_datetime_input(text)
-    if dt is None:
-        await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
+    try:
+        schedule_id = context.user_data.get("edit_schedule_id")
+        text = update.message.text.strip()
+        dt = parse_datetime_input(text)
+        if dt is None:
+            await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
+            return EDIT_START_DATE
+        await update_schedule_multi(schedule_id, start_date=dt)
+        sch = await fetch_schedule(schedule_id)
+        await _edit_menu_after(update, sch, "开始日期已修改。")
+        return ConversationHandler.END
+    except Exception:
+        print(traceback.format_exc())
+        await update.message.reply_text("出现异常，修改未成功。")
         return EDIT_START_DATE
-    await update_schedule_multi(schedule_id, start_date=dt)
-    sch = await fetch_schedule(schedule_id)
-    await _edit_menu_after(update, sch, "开始日期已修改。")
-    return ConversationHandler.END
 
 @admin_only
 async def edit_end_date_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -397,16 +426,21 @@ async def edit_end_date_entry(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 @admin_only
 async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    schedule_id = context.user_data.get("edit_schedule_id")
-    text = update.message.text.strip()
-    dt = parse_datetime_input(text)
-    if dt is None:
-        await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
+    try:
+        schedule_id = context.user_data.get("edit_schedule_id")
+        text = update.message.text.strip()
+        dt = parse_datetime_input(text)
+        if dt is None:
+            await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
+            return EDIT_END_DATE
+        await update_schedule_multi(schedule_id, end_date=dt)
+        sch = await fetch_schedule(schedule_id)
+        await _edit_menu_after(update, sch, "结束日期已修改。")
+        return ConversationHandler.END
+    except Exception:
+        print(traceback.format_exc())
+        await update.message.reply_text("出现异常，修改未成功。")
         return EDIT_END_DATE
-    await update_schedule_multi(schedule_id, end_date=dt)
-    sch = await fetch_schedule(schedule_id)
-    await _edit_menu_after(update, sch, "结束日期已修改。")
-    return ConversationHandler.END
 
 # ====== 开关按钮 =======
 @admin_only
