@@ -7,9 +7,8 @@ from modules.keyboards import (
     schedule_list_menu, schedule_edit_menu, schedule_add_menu, group_select_menu
 )
 from config import GROUPS, ADMINS
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
-from datetime import datetime
 
 (
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT,
@@ -239,7 +238,6 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
     sch = await fetch_schedule(schedule_id)
-    # 展示完整文本与菜单
     desc = f"【定时消息设置】\n{sch.get('text','')}\n"
     if sch.get('media_url'):
         desc += f"\n[已含媒体]"
