@@ -4,31 +4,22 @@ from db import (
     fetch_schedules, fetch_schedule, create_schedule,
     update_schedule, update_schedule_multi, delete_schedule
 )
-from telegram import (
-    Update, 
-    InlineKeyboardMarkup, InlineKeyboardButton, 
-    ReplyKeyboardMarkup
-)
-from telegram.ext import (
-    ContextTypes, 
-    ConversationHandler, 
-    MessageHandler, 
-    CallbackQueryHandler, 
-    filters
-)
+from modules.keyboards import schedule_list_menu, schedule_edit_menu, schedule_add_menu
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 from datetime import datetime
 
-# ========== 状态枚举 ==========
+# 状态枚举
 (
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, 
     ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM
 ) = range(200, 209)
 
-# ========== 你可维护的群聊列表 ==========
+# 可用群聊列表（可自己维护）
 GROUPS = [
     {"chat_id": -1001234567890, "title": "群1"},
     {"chat_id": -1009876543210, "title": "群2"},
-    # ... 可用数据库动态维护
+    # ... 你可以从数据库或配置文件动态维护
 ]
 
 def group_select_menu():
@@ -58,10 +49,23 @@ def parse_datetime_input(text):
         return text
     return None
 
-# ========== 添加流程 ==========
+# ========== 定时消息列表 ==========
+async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    schedules = await fetch_schedules(chat_id)
+    if update.message:
+        await update.message.reply_text(
+            "⏰ 定时消息列表：\n点击条目可设置。",
+            reply_markup=schedule_list_menu(schedules)
+        )
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(
+            "⏰ 定时消息列表：\n点击条目可设置。",
+            reply_markup=schedule_list_menu(schedules)
+        )
 
+# ========== 添加流程 ==========
 async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 入口，私聊时触发
     await update.message.reply_text("请选择要设置定时消息的群聊：", reply_markup=group_select_menu())
     return SELECT_GROUP
 
@@ -174,7 +178,6 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
         await create_schedule(group_id, sch)
         await query.edit_message_text("定时消息已添加。")
-        # 清理
         context.user_data.pop("new_schedule", None)
         context.user_data.pop("selected_group_id", None)
         return ConversationHandler.END
@@ -207,9 +210,8 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADD_CONFIRM
 
 # ========== 定时推送 ==========
-
 def is_schedule_active(sch):
-    if not sch.get("status", 1):  # status=1 才推送
+    if not sch.get("status", 1):
         return False
     now = datetime.utcnow()
     fmt = "%Y-%m-%d %H:%M"
@@ -230,7 +232,6 @@ def is_schedule_active(sch):
     return True
 
 async def broadcast_task(context):
-    # 群聊ID列表可全量遍历，或用 GROUPS
     group_ids = [g['chat_id'] for g in GROUPS]
     for chat_id in group_ids:
         schedules = await fetch_schedules(chat_id)
@@ -261,8 +262,7 @@ def schedule_broadcast_jobs(application):
         first=10       # 启动后10秒首次执行
     )
 
-# ========== ConversationHandler 配置 ==========
-
+# ========== ConversationHandler ==========
 def get_scheduler_conversation_handler():
     return ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule)],
