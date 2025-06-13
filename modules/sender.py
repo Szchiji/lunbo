@@ -42,9 +42,6 @@ def _in_date_range(start_date: str, end_date: str, now: datetime):
     return True
 
 async def scheduled_sender(app, target_chat_ids):
-    """
-    target_chat_ids: list[int|str] 指定需要自动推送的群/频道ID
-    """
     print("定时消息调度器启动，目标:", target_chat_ids)
     while True:
         now = datetime.now()
@@ -77,10 +74,13 @@ async def scheduled_sender(app, target_chat_ids):
                         from telegram import InlineKeyboardMarkup, InlineKeyboardButton
                         markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=button_url)]])
                     if media:
-                        if media.startswith("http") and (media.endswith(".jpg") or media.endswith(".png")):
-                            await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
-                        elif media.startswith("http") and (media.endswith(".mp4") or ".mp4?" in media):
+                        if (
+                            media.endswith('.mp4') or
+                            (media.startswith('http') and ('.mp4' in media or '.mov' in media))
+                        ):
                             await app.bot.send_video(chat_id=chat_id, video=media, caption=text, reply_markup=markup)
+                        elif media.startswith("http") and (media.endswith(".jpg") or media.endswith(".png")):
+                            await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
                         elif media.startswith("AgAC") or media.startswith("BQAC") or media.isdigit():
                             try:
                                 await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
