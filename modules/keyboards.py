@@ -1,12 +1,6 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 def schedule_list_menu(schedules):
-    """
-    生成定时消息列表菜单
-    - 每条显示状态(✅/❌)、频率、文本摘要
-    - 支持“暂无定时消息”
-    - 必有“➕ 添加定时消息”按钮
-    """
     keyboard = []
     if schedules and len(schedules) > 0:
         for sch in schedules:
@@ -27,8 +21,10 @@ def schedule_edit_menu(schedule):
     keyboard = [
         [
             InlineKeyboardButton(f"状态: {'✅启用' if schedule.get('status') else '❌关闭'}", callback_data=f"toggle_status_{schedule['id']}"),
-            InlineKeyboardButton(f"删除上一条: {'✅' if schedule.get('remove_last') else '❌'}", callback_data=f"toggle_remove_last_{schedule['id']}"),
             InlineKeyboardButton(f"置顶: {'✅' if schedule.get('pin') else '❌'}", callback_data=f"toggle_pin_{schedule['id']}"),
+        ],
+        [
+            InlineKeyboardButton(f"删除上一条: {'✅' if schedule.get('remove_last') else '❌'}", callback_data=f"toggle_remove_last_{schedule['id']}"),
         ],
         [
             InlineKeyboardButton("📝修改文本", callback_data=f"edit_text_{schedule['id']}"),
