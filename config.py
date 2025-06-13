@@ -1,16 +1,16 @@
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
+import json
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
-# 支持群名映射：GROUPS=-1001234567890:群1,-1009876543210:群2
-GROUPS = dict(
-    i.split(":") for i in os.getenv("GROUPS", "-1001234567890:测试群").split(",")
-)
-# 群ID强制转为int
-GROUPS = {int(k): v for k, v in GROUPS.items()}
-
-POSTGRES_DSN = os.getenv("POSTGRES_DSN")
+GROUPS_JSON = os.getenv("GROUPS", '{"-1002764616804":"群名"}')
+GROUPS_TMP = json.loads(GROUPS_JSON)
+GROUPS = {}
+for k, v in GROUPS_TMP.items():
+    try:
+        GROUPS[int(k)] = v
+    except Exception:
+        try:
+            GROUPS[int(str(k).replace('"', ''))] = v
+        except Exception:
+            pass
