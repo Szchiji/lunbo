@@ -1,9 +1,10 @@
 import logging
+import os
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 )
 from config import BOT_TOKEN, WEBHOOK_URL, GROUPS
-from db import init_db
+from db import init_db, fetch_schedules
 from modules.scheduler import (
     show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
@@ -117,7 +118,13 @@ def main():
 
     application.post_init = on_startup
 
-    application.run_polling()  # 你可根据需求切换为 webhook
+    # Render生产环境端口绑定
+    port = int(os.environ.get("PORT", 8080))
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        webhook_url=WEBHOOK_URL
+    )
 
 if __name__ == '__main__':
     main()
