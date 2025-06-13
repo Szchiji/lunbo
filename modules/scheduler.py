@@ -38,7 +38,7 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 群定时消息机器人 帮助\n"
         "\n"
         "/help - 显示本帮助\n"
-        "/schedule - 管理本群定时消息\n"
+        "/schedule - 管理群定时消息\n"
         "\n"
         "管理员可通过菜单添加、编辑、删除定时推送，支持文本、图片、视频、按钮、重复周期、指定时段/日期、自动删除上一条等高级功能。\n"
         "\n"
@@ -82,35 +82,28 @@ def parse_datetime_input(text):
 # ========== 定时消息列表 ==========
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    schedules = await fetch_schedules(chat_id)
-    if update.message:
+    # 支持私聊时先选群，群聊直接展示本群
+    if update.effective_chat.type == "private":
+        group_id = context.user_data.get("selected_group_id")
+        if not group_id:
+            await update.message.reply_text(
+                "请选择要管理的群聊：",
+                reply_markup=group_select_menu(GROUPS)
+            )
+            return SELECT_GROUP
+        schedules = await fetch_schedules(group_id)
+        group_name = GROUPS[group_id] if isinstance(GROUPS, dict) else str(group_id)
         await update.message.reply_text(
-            "⏰ 定时消息列表：\n点击条目可设置。",
+            f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
             reply_markup=schedule_list_menu(schedules)
-        )
-    elif update.callback_query:
-        await update.callback_query.edit_message_text(
-            "⏰ 定时消息列表：\n点击条目可设置。",
-            reply_markup=schedule_list_menu(schedules)
-        )
-
-# ========== 添加流程 ==========
-@admin_only
-async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 支持按钮入口和消息入口
-    if getattr(update, "callback_query", None):
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
-            "请选择要设置定时消息的群聊：",
-            reply_markup=group_select_menu(GROUPS)
         )
     else:
+        chat_id = update.effective_chat.id
+        schedules = await fetch_schedules(chat_id)
         await update.message.reply_text(
-            "请选择要设置定时消息的群聊：",
-            reply_markup=group_select_menu(GROUPS)
+            "⏰ 定时消息列表：\n点击条目可设置。",
+            reply_markup=schedule_list_menu(schedules)
         )
-    return SELECT_GROUP
 
 @admin_only
 async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -120,11 +113,36 @@ async def select_group_callback(update: Update, context: ContextTypes.DEFAULT_TY
         group_id = int(data[len("set_group_"):])
         context.user_data["selected_group_id"] = group_id
         group_title = GROUPS[group_id] if isinstance(GROUPS, dict) else group_id
-        await query.edit_message_text(f"已选择群聊：{group_title}，请继续设置定时消息。\n请输入文本内容：")
-        context.user_data["new_schedule"] = {}
-        return ADD_TEXT
+        schedules = await fetch_schedules(group_id)
+        await query.edit_message_text(
+            f"⏰ [{group_title}] 定时消息列表：\n点击条目可设置。",
+            reply_markup=schedule_list_menu(schedules)
+        )
+        return ConversationHandler.END
     await query.answer("请选择群聊")
     return SELECT_GROUP
+
+# ========== 添加流程 ==========
+@admin_only
+async def entry_add_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == "private":
+        group_id = context.user_data.get("selected_group_id")
+        if not group_id:
+            if getattr(update, "callback_query", None):
+                await update.callback_query.answer()
+                await update.callback_query.edit_message_text(
+                    "请选择要设置定时消息的群聊：",
+                    reply_markup=group_select_menu(GROUPS)
+                )
+            else:
+                await update.message.reply_text(
+                    "请选择要设置定时消息的群聊：",
+                    reply_markup=group_select_menu(GROUPS)
+                )
+            return SELECT_GROUP
+    context.user_data["new_schedule"] = {}
+    await update.message.reply_text("请输入文本内容：")
+    return ADD_TEXT
 
 @admin_only
 async def add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,7 +242,7 @@ async def add_end_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query.data == "confirm_save":
-        group_id = context.user_data.get('selected_group_id')
+        group_id = context.user_data.get('selected_group_id') or update.effective_chat.id
         sch = context.user_data.get('new_schedule')
         if not group_id or not sch:
             await query.edit_message_text("群聊或消息内容缺失，无法保存。")
@@ -232,12 +250,11 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await create_schedule(group_id, sch)
         await query.edit_message_text("定时消息已添加。")
         context.user_data.pop("new_schedule", None)
-        context.user_data.pop("selected_group_id", None)
+        # 不要清除 selected_group_id，否则私聊可持续操作同一个群
         return ConversationHandler.END
     elif query.data == "cancel_add":
         await query.edit_message_text("已取消添加。")
         context.user_data.pop("new_schedule", None)
-        context.user_data.pop("selected_group_id", None)
         return ConversationHandler.END
     else:
         await query.answer("未知操作")
@@ -247,17 +264,15 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text in ["保存", "确认"]:
-        group_id = context.user_data.get('selected_group_id')
+        group_id = context.user_data.get('selected_group_id') or update.effective_chat.id
         sch = context.user_data['new_schedule']
         await create_schedule(group_id, sch)
         await update.message.reply_text("定时消息已添加。")
         context.user_data.pop("new_schedule", None)
-        context.user_data.pop("selected_group_id", None)
         return ConversationHandler.END
     elif text in ["取消"]:
         await update.message.reply_text("已取消添加。")
         context.user_data.pop("new_schedule", None)
-        context.user_data.pop("selected_group_id", None)
         return ConversationHandler.END
     else:
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
@@ -410,7 +425,6 @@ async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_status = 0 if sch.get("status") else 1
     await update_schedule_multi(schedule_id, status=new_status)
     await update.callback_query.answer(f"{'已关闭' if new_status == 0 else '已启用'}")
-    # 刷新菜单
     sch = await fetch_schedule(schedule_id)
     await update.callback_query.edit_message_reply_markup(reply_markup=schedule_edit_menu(sch))
 
@@ -520,8 +534,8 @@ def get_scheduler_conversation_handler():
         entry_points=[
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
-            MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),  # 支持 /schedule 命令直接查看
-            MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list) # 支持“查看定时消息”文本
+            MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
+            MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list)
         ],
         states={
             SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
