@@ -1,11 +1,36 @@
 from db import fetch_schedules
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime
+
+def is_schedule_active(sch):
+    # status=1才推送
+    if not sch.get("status"):
+        return False
+    now = datetime.utcnow()
+    fmt = "%Y-%m-%d %H:%M"
+    # 起始时间
+    if sch.get("start_date"):
+        try:
+            start = datetime.strptime(sch["start_date"], fmt)
+            if now < start:
+                return False
+        except Exception:
+            pass
+    # 结束时间
+    if sch.get("end_date"):
+        try:
+            end = datetime.strptime(sch["end_date"], fmt)
+            if now > end:
+                return False
+        except Exception:
+            pass
+    return True
 
 async def broadcast_task(context):
     for chat_id in context.bot_data.get("group_ids", []):
         schedules = await fetch_schedules(chat_id)
         for sch in schedules:
-            if sch.get("status"):
+            if is_schedule_active(sch):
                 # 支持媒体、按钮
                 if sch.get("media_url"):
                     if sch["media_url"].endswith((".jpg", ".png")) or sch["media_url"].startswith("AgAC"):
@@ -21,7 +46,6 @@ async def broadcast_task(context):
                         await context.bot.send_message(chat_id, sch["text"], reply_markup=reply_markup)
                     else:
                         await context.bot.send_message(chat_id, sch["text"])
-                break  # 只发一条，如需全部遍历可移除
 
 def schedule_broadcast_jobs(application, group_ids):
     application.bot_data["group_ids"] = group_ids
