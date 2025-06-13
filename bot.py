@@ -2,7 +2,7 @@ import logging
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
 )
-from config import BOT_TOKEN, WEBHOOK_URL, GROUPS
+from config import BOT_TOKEN, WEBHOOK_URL
 from db import init_db
 from modules.scheduler import (
     show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
@@ -17,8 +17,9 @@ from modules.scheduler import (
     toggle_status, toggle_remove_last, toggle_pin, delete_schedule_callback,
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
-    show_help, show_welcome, broadcast_task, schedule_broadcast_jobs
+    show_help, show_welcome, schedule_broadcast_jobs
 )
+from telegram.ext import ConversationHandler
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -57,7 +58,9 @@ def main():
             MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
         ],
         states={
-            SELECT_GROUP: [CallbackQueryHandler(select_group_callback)],
+            SELECT_GROUP: [
+                CallbackQueryHandler(select_group_callback, pattern="^set_group_")
+            ],
 
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), add_media)],
@@ -71,7 +74,6 @@ def main():
                 CallbackQueryHandler(confirm_callback)
             ],
 
-            # 编辑流程
             EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
             EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
             EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
@@ -108,7 +110,7 @@ def main():
 
     application.post_init = on_startup
 
-    # 推荐先用 polling 调试，云端部署再用 webhook
+    # 推荐先用 polling 调试，部署云服务器再用 webhook
     # application.run_polling()
     application.run_webhook(
         listen="0.0.0.0",
