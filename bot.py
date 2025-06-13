@@ -18,14 +18,11 @@ from modules.scheduler import (
     toggle_status, toggle_remove_last, toggle_pin, delete_schedule_callback,
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
-    show_help, show_welcome, schedule_broadcast_jobs, fetch_schedules, schedule_list_menu
 )
+from modules.keyboards import schedule_list_menu
 from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
-
-async def start(update, context):
-    await show_welcome(update, context)
 
 async def cancel(update, context):
     if update.message:
@@ -35,7 +32,6 @@ async def cancel(update, context):
         try:
             await update.callback_query.edit_message_text("已取消操作。")
         except BadRequest:
-            # 已经被删或者内容未变
             pass
     return ConversationHandler.END
 
@@ -61,8 +57,6 @@ async def cancel_callback(update, context):
 
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", show_help))
 
     conv = ConversationHandler(
         entry_points=[
@@ -120,17 +114,10 @@ def main():
     async def on_startup(app):
         await init_db()
         logging.info("数据库初始化完成")
-        schedule_broadcast_jobs(app)
 
     application.post_init = on_startup
 
-    # 建议开发调试用 polling，生产用 webhook
-    # application.run_polling()
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=8080,
-        webhook_url=WEBHOOK_URL
-    )
+    application.run_polling()  # 你可根据需求切换为 webhook
 
 if __name__ == '__main__':
     main()
