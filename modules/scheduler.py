@@ -1,3 +1,4 @@
+import pprint
 import re
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
@@ -235,7 +236,11 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in ["保存", "确认"]:
         chat_id = update.effective_chat.id
         sch = context.user_data['new_schedule']
+        print("DEBUG: chat_id =", chat_id)
+        print("DEBUG: sch =")
+        pprint.pprint(sch)
         await create_schedule(chat_id, sch)
+        print("DEBUG: create_schedule已调用")
         await update.message.reply_text("定时消息已添加。")
         await show_schedule_list(update, context)
         context.user_data.pop("new_schedule", None)
