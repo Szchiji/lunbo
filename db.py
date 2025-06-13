@@ -11,8 +11,7 @@ async def init_db():
             id SERIAL PRIMARY KEY,
             chat_id BIGINT,
             text TEXT,
-            media_type TEXT,
-            media_file_id TEXT,
+            media_url TEXT,
             button_text TEXT,
             button_url TEXT,
             repeat_seconds INTEGER,
@@ -42,16 +41,15 @@ async def create_schedule(chat_id, sch):
     conn = await get_conn()
     await conn.execute('''
         INSERT INTO schedules (
-            chat_id, text, media_type, media_file_id,
+            chat_id, text, media_url,
             button_text, button_url, repeat_seconds, time_period,
             start_date, end_date
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ''',
         chat_id,
         sch.get('text', ''),
-        sch.get('media_type', ''),
-        sch.get('media_file_id', ''),
+        sch.get('media_url', ''),
         sch.get('button_text', ''),
         sch.get('button_url', ''),
         sch.get('repeat_seconds', 0),
@@ -61,7 +59,15 @@ async def create_schedule(chat_id, sch):
     )
     await conn.close()
 
-async def update_schedule(schedule_id, update_dict):
+async def update_schedule(schedule_id, field, value):
+    conn = await get_conn()
+    await conn.execute(
+        f'UPDATE schedules SET {field}=$1 WHERE id=$2',
+        value, schedule_id
+    )
+    await conn.close()
+
+async def update_schedule_multi(schedule_id, update_dict):
     conn = await get_conn()
     set_clause = ', '.join([f"{k}=${i+1}" for i, k in enumerate(update_dict.keys())])
     values = list(update_dict.values())
