@@ -1,26 +1,30 @@
 import logging
-from apscheduler.schedulers.background import BackgroundScheduler
 from db import fetch_schedules
-from telegram import Bot
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
-scheduler = BackgroundScheduler()
-
-async def broadcast_task(bot: Bot, group_ids):
-    for group_id in group_ids:
-        schedules = await fetch_schedules(group_id)
-        for schedule in schedules:
-            if schedule['status']:
-                try:
-                    # 支持发送文本或媒体
-                    if schedule['media_url']:
-                        await bot.send_photo(chat_id=group_id, photo=schedule['media_url'], caption=schedule['text'])
-                    else:
-                        await bot.send_message(chat_id=group_id, text=schedule['text'])
-                except Exception as e:
-                    logging.exception(f"发送消息到 {group_id} 失败: {e}")
+async def broadcast_task(context):
+    for chat_id in context.bot_data.get("group_ids", []):
+        schedules = await fetch_schedules(chat_id)
+        # 示例：只发启用的第一个定时消息
+        for sch in schedules:
+            if sch["status"]:
+                kwargs = {}
+                if sch.get("media_type") == "photo" and sch.get("media_file_id"):
+                    kwargs["photo"] = sch["media_file_id"]
+                elif sch.get("media_type") == "video" and sch.get("media_file_id"):
+                    kwargs["video"] = sch["media_file_id"]
+                if sch.get("button_text") and sch.get("button_url"):
+                    reply_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton(sch["button_text"], url=sch["button_url"])]
+                    ])
+                    kwargs["reply_markup"] = reply_markup
+                await context.bot.send_message(chat_id, sch["text"], **kwargs)
+                break
 
 def schedule_broadcast_jobs(application, group_ids):
-    scheduler.remove_all_jobs()
-    scheduler.add_job(lambda: application.create_task(broadcast_task(application.bot, group_ids)), 'interval', seconds=60)
-    scheduler.start()
-    logging.info("定时轮播任务已启动")
+    application.bot_data["group_ids"] = group_ids
+    application.job_queue.run_repeating(
+        broadcast_task,
+        interval=60,
+        first=10
+    )
