@@ -4,6 +4,14 @@ import json
 # Telegram 机器人 Token
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+
+ADMINS_JSON = os.getenv("ADMINS", "[]")  # 默认空列表
+try:
+    ADMINS = json.loads(ADMINS_JSON)
+except Exception as e:
+    print(f"ADMINS 环境变量格式错误: {e}")
+    ADMINS = []
+
 # Webhook 地址（可选）
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
