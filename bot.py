@@ -32,17 +32,22 @@ async def cancel(update, context):
         await update.message.reply_text("已取消操作。")
     elif update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text("已取消操作。")
+        try:
+            await update.callback_query.edit_message_text("已取消操作。")
+        except BadRequest:
+            # 已经被删或者内容未变
+            pass
     return ConversationHandler.END
 
 async def cancel_callback(update, context):
     query = update.callback_query
     try:
-        # 尝试删除当前菜单
         await query.delete_message()
     except Exception:
-        pass
-    # 返回定时消息主列表
+        try:
+            await query.edit_message_text("已取消操作。")
+        except Exception:
+            pass
     group_id = context.user_data.get("selected_group_id")
     if not group_id and hasattr(query.message.chat, "id"):
         group_id = query.message.chat.id
