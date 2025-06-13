@@ -106,7 +106,9 @@ async def update_schedule(schedule_id, sch):
             await db.commit()
 
 async def update_schedule_multi(schedule_id, **kwargs):
+    print("[update_schedule_multi] called:", schedule_id, kwargs, flush=True)
     if not kwargs:
+        print("[update_schedule_multi] No kwargs, return", flush=True)
         return
     keys = list(kwargs.keys())
     vals = list(kwargs.values())
@@ -114,6 +116,8 @@ async def update_schedule_multi(schedule_id, **kwargs):
         set_clause = ", ".join(f"{k}=${i+1}" for i, k in enumerate(keys))
         pool = await _pg_conn()
         async with pool.acquire() as conn:
+            print(f"[update_schedule_multi] PG SQL: UPDATE schedules SET {set_clause} WHERE id=${len(vals)+1}", flush=True)
+            print("[update_schedule_multi] PG vals:", vals + [schedule_id], flush=True)
             await conn.execute(
                 f"UPDATE schedules SET {set_clause} WHERE id=${len(vals)+1}",
                 *vals, schedule_id
@@ -123,6 +127,8 @@ async def update_schedule_multi(schedule_id, **kwargs):
         set_clause = ", ".join(f"{k}=?" for k in keys)
         vals.append(schedule_id)
         sql = f"UPDATE schedules SET {set_clause} WHERE id=?"
+        print("[update_schedule_multi] SQLite SQL:", sql, flush=True)
+        print("[update_schedule_multi] SQLite vals:", vals, flush=True)
         async with _sqlite_conn() as db:
             await db.execute(sql, vals)
             await db.commit()
