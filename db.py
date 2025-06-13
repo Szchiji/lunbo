@@ -25,7 +25,9 @@ async def init_db():
 
 async def fetch_schedules(chat_id):
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute("SELECT * FROM schedules WHERE chat_id=? ORDER BY id DESC", (chat_id,))
+        cur = await db.execute(
+            "SELECT * FROM schedules WHERE chat_id=? ORDER BY id DESC", (chat_id,)
+        )
         rows = await cur.fetchall()
         return [dict(zip([c[0] for c in cur.description], row)) for row in rows]
 
@@ -40,7 +42,10 @@ async def fetch_schedule(schedule_id):
 async def create_schedule(chat_id, sch):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
-            INSERT INTO schedules (chat_id, text, media_url, button_text, button_url, repeat_seconds, time_period, start_date, end_date)
+            INSERT INTO schedules (
+                chat_id, text, media_url, button_text, button_url, 
+                repeat_seconds, time_period, start_date, end_date
+            )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             chat_id,
