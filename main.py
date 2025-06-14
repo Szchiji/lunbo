@@ -64,7 +64,6 @@ async def cancel_callback(update, context):
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # 注册 /start 命令
     application.add_handler(CommandHandler("start", start))
 
     conv = ConversationHandler(
@@ -74,6 +73,19 @@ def main():
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
             MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
+            # 所有菜单入口都放在 entry_points
+            CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
+            CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
+            CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"),
+            CallbackQueryHandler(edit_button_entry, pattern=r"^edit_button_\d+$"),
+            CallbackQueryHandler(edit_repeat_entry, pattern=r"^edit_repeat_\d+$"),
+            CallbackQueryHandler(edit_period_entry, pattern=r"^edit_time_period_\d+$"),
+            CallbackQueryHandler(edit_start_date_entry, pattern=r"^edit_start_date_\d+$"),
+            CallbackQueryHandler(edit_end_date_entry, pattern=r"^edit_end_date_\d+$"),
+            CallbackQueryHandler(toggle_status, pattern=r"^toggle_status_\d+$"),
+            CallbackQueryHandler(toggle_remove_last, pattern=r"^toggle_remove_last_\d+$"),
+            CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"),
+            CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"),
         ],
         states={
             SELECT_GROUP: [
@@ -106,19 +118,8 @@ def main():
     )
     application.add_handler(conv)
 
-    # 编辑菜单回调
-    application.add_handler(CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_button_entry, pattern=r"^edit_button_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_repeat_entry, pattern=r"^edit_repeat_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_period_entry, pattern=r"^edit_time_period_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_start_date_entry, pattern=r"^edit_start_date_\d+$"))
-    application.add_handler(CallbackQueryHandler(edit_end_date_entry, pattern=r"^edit_end_date_\d+$"))
-    application.add_handler(CallbackQueryHandler(toggle_status, pattern=r"^toggle_status_\d+$"))
-    application.add_handler(CallbackQueryHandler(toggle_remove_last, pattern=r"^toggle_remove_last_\d+$"))
-    application.add_handler(CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"))
-    application.add_handler(CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"))
+    # ！！！不要再有下面这类全局 CallbackQueryHandler！！！
+    # application.add_handler(CallbackQueryHandler(...))
 
     async def on_startup(app):
         await init_db()
@@ -141,13 +142,13 @@ def main():
     application.post_init = on_startup
     application.post_shutdown = on_shutdown
 
-    # Render生产环境端口绑定
-    port = int(os.environ.get("PORT", 8080))
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        webhook_url=WEBHOOK_URL
-    )
+    # 建议开发调试用 polling，生产环境才用 webhook
+    # application.run_webhook(
+    #     listen="0.0.0.0",
+    #     port=int(os.environ.get("PORT", 8080)),
+    #     webhook_url=WEBHOOK_URL
+    # )
+    application.run_polling()
 
 if __name__ == '__main__':
     bg_task = None
