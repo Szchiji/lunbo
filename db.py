@@ -58,27 +58,27 @@ async def create_schedule(chat_id, sch):
         async with pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO schedules 
-                (chat_id, text, media_url, button_text, button_url, repeat_seconds, time_period, start_date, end_date, status, remove_last, pin)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+                (chat_id, text, media_url, button_text, button_url, repeat_seconds, time_period, start_date, end_date, status, remove_last, pin, last_message_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
             """, chat_id, sch.get('text', ''), sch.get('media_url', ''),
                 sch.get('button_text', ''), sch.get('button_url', ''),
                 sch.get('repeat_seconds', 0), sch.get('time_period', ''),
                 sch.get('start_date', ''), sch.get('end_date', ''),
-                sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0)
+                sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0), sch.get('last_message_id')
             )
         await pool.close()
         print("[create_schedule] (PG) executed", flush=True)
     else:
         async with _sqlite_conn() as db:
             await db.execute("""INSERT INTO schedules 
-                (chat_id, text, media_url, button_text, button_url, repeat_seconds, time_period, start_date, end_date, status, remove_last, pin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (chat_id, text, media_url, button_text, button_url, repeat_seconds, time_period, start_date, end_date, status, remove_last, pin, last_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     chat_id, sch.get('text', ''), sch.get('media_url', ''),
                     sch.get('button_text', ''), sch.get('button_url', ''),
                     sch.get('repeat_seconds', 0), sch.get('time_period', ''),
                     sch.get('start_date', ''), sch.get('end_date', ''),
-                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0)
+                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0), sch.get('last_message_id')
                 )
             )
             await db.commit()
@@ -91,28 +91,28 @@ async def update_schedule(schedule_id, sch):
         async with pool.acquire() as conn:
             await conn.execute("""
                 UPDATE schedules SET 
-                text=$1, media_url=$2, button_text=$3, button_url=$4, repeat_seconds=$5, time_period=$6, start_date=$7, end_date=$8, status=$9, remove_last=$10, pin=$11
-                WHERE id=$12
+                text=$1, media_url=$2, button_text=$3, button_url=$4, repeat_seconds=$5, time_period=$6, start_date=$7, end_date=$8, status=$9, remove_last=$10, pin=$11, last_message_id=$12
+                WHERE id=$13
             """,
             sch.get('text', ''), sch.get('media_url', ''),
             sch.get('button_text', ''), sch.get('button_url', ''),
             sch.get('repeat_seconds', 0), sch.get('time_period', ''),
             sch.get('start_date', ''), sch.get('end_date', ''),
-            sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
+            sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0), sch.get('last_message_id'),
             schedule_id)
         await pool.close()
         print("[update_schedule] (PG) executed", flush=True)
     else:
         async with _sqlite_conn() as db:
             await db.execute("""UPDATE schedules SET 
-                text=?, media_url=?, button_text=?, button_url=?, repeat_seconds=?, time_period=?, start_date=?, end_date=?, status=?, remove_last=?, pin=?
+                text=?, media_url=?, button_text=?, button_url=?, repeat_seconds=?, time_period=?, start_date=?, end_date=?, status=?, remove_last=?, pin=?, last_message_id=?
                 WHERE id=?""",
                 (
                     sch.get('text', ''), sch.get('media_url', ''),
                     sch.get('button_text', ''), sch.get('button_url', ''),
                     sch.get('repeat_seconds', 0), sch.get('time_period', ''),
                     sch.get('start_date', ''), sch.get('end_date', ''),
-                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
+                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0), sch.get('last_message_id'),
                     schedule_id
                 )
             )
@@ -182,7 +182,8 @@ async def init_db():
                 end_date TEXT,
                 status INTEGER DEFAULT 1,
                 remove_last INTEGER DEFAULT 0,
-                pin INTEGER DEFAULT 0
+                pin INTEGER DEFAULT 0,
+                last_message_id BIGINT
             )
             """)
         await pool.close()
@@ -203,7 +204,8 @@ async def init_db():
                 end_date TEXT,
                 status INTEGER DEFAULT 1,
                 remove_last INTEGER DEFAULT 0,
-                pin INTEGER DEFAULT 0
+                pin INTEGER DEFAULT 0,
+                last_message_id INTEGER
             )
             """)
             await db.commit()
