@@ -118,8 +118,7 @@ def main():
     )
     application.add_handler(conv)
 
-    # ！！！不要再有下面这类全局 CallbackQueryHandler！！！
-    # application.add_handler(CallbackQueryHandler(...))
+    # 不要再有全局 CallbackQueryHandler
 
     async def on_startup(app):
         await init_db()
@@ -142,13 +141,12 @@ def main():
     application.post_init = on_startup
     application.post_shutdown = on_shutdown
 
-    # 建议开发调试用 polling，生产环境才用 webhook
-    # application.run_webhook(
-    #     listen="0.0.0.0",
-    #     port=int(os.environ.get("PORT", 8080)),
-    #     webhook_url=WEBHOOK_URL
-    # )
-    application.run_polling()
+    # 生产环境永远用 webhook！
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8080)),
+        webhook_url=WEBHOOK_URL
+    )
 
 if __name__ == '__main__':
     bg_task = None
