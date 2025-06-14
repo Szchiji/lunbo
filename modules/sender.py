@@ -1,101 +1,76 @@
-import asyncio
-from datetime import datetime, time as dtime
-from db import fetch_schedules
-from telegram.constants import ParseMode
+import mimetypes
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
-last_sent = {}
+async def send_text(bot, chat_id, text, buttons=None, **kwargs):
+    """
+    发送纯文本消息，可带按钮
+    """
+    reply_markup = buttons if buttons else None
+    return await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, **kwargs)
 
-def _in_time_period(period: str, now: datetime):
-    if not period:
-        return True
+async def send_media(bot, chat_id, media_url, caption=None, buttons=None, **kwargs):
+    """
+    智能判断文件类型发送媒体消息（图片/视频/文档），可带caption和按钮
+    """
+    mime, _ = mimetypes.guess_type(media_url)
+    reply_markup = buttons if buttons else None
+
     try:
-        start_str, end_str = period.split('-')
-        start = dtime.fromisoformat(start_str)
-        end = dtime.fromisoformat(end_str)
-        now_time = now.time()
-        if start <= end:
-            return start <= now_time <= end
+        if not mime:
+            # 无法识别类型，按文档方式发送
+            return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
+        if mime.startswith('image/'):
+            return await bot.send_photo(chat_id=chat_id, photo=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
+        elif mime.startswith('video/'):
+            return await bot.send_video(chat_id=chat_id, video=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
         else:
-            return now_time >= start or now_time <= end
-    except Exception:
-        return True
+            return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
+    except Exception as e:
+        print(f"[send_media] 发送媒体失败: {e}")
+        return None
 
-def _in_date_range(start_date: str, end_date: str, now: datetime):
-    fmt = "%Y-%m-%d %H:%M"
-    fmt_short = "%Y-%m-%d"
-    def parse(dt):
-        if not dt or dt in ["不限", ""]:
-            return None
+def build_buttons(buttons_data):
+    """
+    将数据库中的按钮描述转为 InlineKeyboardMarkup
+    支持单行/多行、字符串或数组格式
+    buttons_data 示例:
+        [
+            {"text": "按钮1", "url": "https://xxx"},
+            [{"text": "按钮2", "url": "https://yyy"}, {"text": "按钮3", "url": "https://zzz"}]
+        ]
+    """
+    import json
+    if not buttons_data:
+        return None
+    # 支持字符串（数据库存储JSON字符串）或对象
+    if isinstance(buttons_data, str):
         try:
-            return datetime.strptime(dt, fmt)
+            buttons_data = json.loads(buttons_data)
         except Exception:
-            try:
-                return datetime.strptime(dt, fmt_short)
-            except Exception:
-                return None
-    start = parse(start_date)
-    end = parse(end_date)
-    if start and now < start:
-        return False
-    if end and now > end:
-        return False
-    return True
+            return None
+    rows = []
+    for btn in buttons_data:
+        if isinstance(btn, list):
+            row = [InlineKeyboardButton(sub.get("text", "--"), url=sub.get("url", "")) for sub in btn]
+            rows.append(row)
+        else:
+            rows.append([InlineKeyboardButton(btn.get("text", "--"), url=btn.get("url", ""))])
+    return InlineKeyboardMarkup(rows) if rows else None
 
-async def scheduled_sender(app, target_chat_ids):
+async def delete_message(bot, chat_id, message_id):
+    """
+    删除指定消息
+    """
     try:
-        print("定时消息调度器启动，目标:", target_chat_ids)
-        while True:
-            now = datetime.now()
-            for chat_id in target_chat_ids:
-                try:
-                    schedules = await fetch_schedules(chat_id)
-                except Exception as e:
-                    print(f"查询群/频道 {chat_id} 的定时消息失败: {e}")
-                    continue
-                for sch in schedules:
-                    if sch.get("status", 1) != 1:
-                        continue
-                    schedule_id = sch["id"]
-                    repeat = sch.get("repeat_seconds", 0) or 60
-                    period = sch.get("time_period", "")
-                    if not _in_time_period(period, now):
-                        continue
-                    if not _in_date_range(sch.get("start_date", ""), sch.get("end_date", ""), now):
-                        continue
-                    last = last_sent.get(schedule_id)
-                    if last and (now - last).total_seconds() < repeat:
-                        continue
-                    try:
-                        text = sch.get("text", "")
-                        media = sch.get("media_url", "")
-                        button_text = sch.get("button_text", "")
-                        button_url = sch.get("button_url", "")
-                        markup = None
-                        if button_text and button_url:
-                            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-                            markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=button_url)]])
-                        if media:
-                            # --- 修正：支持视频 file_id、直链、图片、文档 ---
-                            if (
-                                media.endswith('.mp4')
-                                or (media.startswith('http') and ('.mp4' in media or '.mov' in media))
-                                or ((media.startswith("BAACAg") or media.startswith("BQACAg")) and len(media) > 30)
-                            ):
-                                await app.bot.send_video(chat_id=chat_id, video=media, caption=text, reply_markup=markup)
-                            elif media.startswith("http") and (media.endswith(".jpg") or media.endswith(".png")):
-                                await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
-                            elif (media.startswith("AgAC") or media.isdigit()):
-                                try:
-                                    await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
-                                except Exception:
-                                    await app.bot.send_document(chat_id=chat_id, document=media, caption=text, reply_markup=markup)
-                            else:
-                                await app.bot.send_message(chat_id=chat_id, text=f"{text}\n{media}", reply_markup=markup)
-                        else:
-                            await app.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
-                        last_sent[schedule_id] = now
-                    except Exception as e:
-                        print(f"定时消息发送到 {chat_id} 失败: {e}")
-            await asyncio.sleep(10)
-    except asyncio.CancelledError:
-        print("定时群发任务已取消，退出。")
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        print(f"[delete_message] 删除消息失败: {e}")
+
+async def pin_message(bot, chat_id, message_id, disable_notification=True):
+    """
+    置顶指定消息
+    """
+    try:
+        await bot.pin_chat_message(chat_id, message_id, disable_notification=disable_notification)
+    except Exception as e:
+        print(f"[pin_message] 置顶失败: {e}")
