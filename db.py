@@ -6,17 +6,21 @@ DB_PATH = "schedules.db"
 USE_PG = bool(POSTGRES_DSN)
 
 async def _sqlite_conn():
+    print("[db.py] _sqlite_conn() called", flush=True)
     return await aiosqlite.connect(DB_PATH)
 
 async def _pg_conn():
+    print("[db.py] _pg_conn() called", flush=True)
     return await asyncpg.create_pool(dsn=POSTGRES_DSN, min_size=1, max_size=5)
 
 async def fetch_schedules(chat_id):
+    print(f"[fetch_schedules] chat_id={chat_id}", flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM schedules WHERE chat_id=$1 ORDER BY id DESC", chat_id)
         await pool.close()
+        print(f"[fetch_schedules] (PG) rows fetched={len(rows)}", flush=True)
         return [dict(row) for row in rows]
     else:
         async with _sqlite_conn() as db:
@@ -25,14 +29,17 @@ async def fetch_schedules(chat_id):
                 "SELECT * FROM schedules WHERE chat_id=? ORDER BY id DESC", (chat_id,))
             rows = await cursor.fetchall()
             await cursor.close()
+            print(f"[fetch_schedules] (SQLite) rows fetched={len(rows)}", flush=True)
             return [dict(row) for row in rows]
 
 async def fetch_schedule(schedule_id):
+    print(f"[fetch_schedule] schedule_id={schedule_id}", flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM schedules WHERE id=$1", schedule_id)
         await pool.close()
+        print(f"[fetch_schedule] (PG) row={dict(row) if row else None}", flush=True)
         return dict(row) if row else None
     else:
         async with _sqlite_conn() as db:
@@ -41,10 +48,11 @@ async def fetch_schedule(schedule_id):
                 "SELECT * FROM schedules WHERE id=?", (schedule_id,))
             row = await cursor.fetchone()
             await cursor.close()
+            print(f"[fetch_schedule] (SQLite) row={dict(row) if row else None}", flush=True)
             return dict(row) if row else None
 
 async def create_schedule(chat_id, sch):
-    print("[create_schedule]", chat_id, sch, flush=True)
+    print(f"[create_schedule] chat_id={chat_id}, sch={sch}", flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
@@ -59,6 +67,7 @@ async def create_schedule(chat_id, sch):
                 sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0)
             )
         await pool.close()
+        print("[create_schedule] (PG) executed", flush=True)
     else:
         async with _sqlite_conn() as db:
             await db.execute("""INSERT INTO schedules 
@@ -73,9 +82,45 @@ async def create_schedule(chat_id, sch):
                 )
             )
             await db.commit()
+            print("[create_schedule] (SQLite) executed", flush=True)
+
+async def update_schedule(schedule_id, sch):
+    print(f"[update_schedule] schedule_id={schedule_id}, sch={sch}", flush=True)
+    if USE_PG:
+        pool = await _pg_conn()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE schedules SET 
+                text=$1, media_url=$2, button_text=$3, button_url=$4, repeat_seconds=$5, time_period=$6, start_date=$7, end_date=$8, status=$9, remove_last=$10, pin=$11
+                WHERE id=$12
+            """,
+            sch.get('text', ''), sch.get('media_url', ''),
+            sch.get('button_text', ''), sch.get('button_url', ''),
+            sch.get('repeat_seconds', 0), sch.get('time_period', ''),
+            sch.get('start_date', ''), sch.get('end_date', ''),
+            sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
+            schedule_id)
+        await pool.close()
+        print("[update_schedule] (PG) executed", flush=True)
+    else:
+        async with _sqlite_conn() as db:
+            await db.execute("""UPDATE schedules SET 
+                text=?, media_url=?, button_text=?, button_url=?, repeat_seconds=?, time_period=?, start_date=?, end_date=?, status=?, remove_last=?, pin=?
+                WHERE id=?""",
+                (
+                    sch.get('text', ''), sch.get('media_url', ''),
+                    sch.get('button_text', ''), sch.get('button_url', ''),
+                    sch.get('repeat_seconds', 0), sch.get('time_period', ''),
+                    sch.get('start_date', ''), sch.get('end_date', ''),
+                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
+                    schedule_id
+                )
+            )
+            await db.commit()
+            print("[update_schedule] (SQLite) executed", flush=True)
 
 async def update_schedule_multi(schedule_id, **kwargs):
-    print("[update_schedule_multi] called:", schedule_id, kwargs, flush=True)
+    print(f"[update_schedule_multi] called: schedule_id={schedule_id}, kwargs={kwargs}", flush=True)
     if not kwargs:
         print("[update_schedule_multi] No kwargs, return", flush=True)
         return
@@ -92,29 +137,34 @@ async def update_schedule_multi(schedule_id, **kwargs):
                 *vals, schedule_id
             )
         await pool.close()
+        print("[update_schedule_multi] (PG) executed", flush=True)
     else:
         set_clause = ", ".join(f"{k}=?" for k in keys)
         vals.append(schedule_id)
         sql = f"UPDATE schedules SET {set_clause} WHERE id=?"
-        print("[update_schedule_multi] SQLite SQL:", sql, flush=True)
-        print("[update_schedule_multi] SQLite vals:", vals, flush=True)
+        print(f"[update_schedule_multi] SQLite SQL: {sql}", flush=True)
+        print(f"[update_schedule_multi] SQLite vals: {vals}", flush=True)
         async with _sqlite_conn() as db:
             await db.execute(sql, vals)
             await db.commit()
+            print("[update_schedule_multi] (SQLite) executed", flush=True)
 
 async def delete_schedule(schedule_id):
-    print("[delete_schedule]", schedule_id, flush=True)
+    print(f"[delete_schedule] schedule_id={schedule_id}", flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
             await conn.execute("DELETE FROM schedules WHERE id=$1", schedule_id)
         await pool.close()
+        print("[delete_schedule] (PG) executed", flush=True)
     else:
         async with _sqlite_conn() as db:
             await db.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
             await db.commit()
+            print("[delete_schedule] (SQLite) executed", flush=True)
 
 async def init_db():
+    print("[init_db] called", flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
@@ -136,6 +186,7 @@ async def init_db():
             )
             """)
         await pool.close()
+        print("[init_db] (PG) executed", flush=True)
     else:
         async with _sqlite_conn() as db:
             await db.execute("""
@@ -156,3 +207,4 @@ async def init_db():
             )
             """)
             await db.commit()
+            print("[init_db] (SQLite) executed", flush=True)
