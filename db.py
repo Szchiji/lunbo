@@ -44,6 +44,7 @@ async def fetch_schedule(schedule_id):
             return dict(row) if row else None
 
 async def create_schedule(chat_id, sch):
+    print("[create_schedule]", chat_id, sch, flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
@@ -69,38 +70,6 @@ async def create_schedule(chat_id, sch):
                     sch.get('repeat_seconds', 0), sch.get('time_period', ''),
                     sch.get('start_date', ''), sch.get('end_date', ''),
                     sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0)
-                )
-            )
-            await db.commit()
-
-async def update_schedule(schedule_id, sch):
-    if USE_PG:
-        pool = await _pg_conn()
-        async with pool.acquire() as conn:
-            await conn.execute("""
-                UPDATE schedules SET 
-                text=$1, media_url=$2, button_text=$3, button_url=$4, repeat_seconds=$5, time_period=$6, start_date=$7, end_date=$8, status=$9, remove_last=$10, pin=$11
-                WHERE id=$12
-            """,
-            sch.get('text', ''), sch.get('media_url', ''),
-            sch.get('button_text', ''), sch.get('button_url', ''),
-            sch.get('repeat_seconds', 0), sch.get('time_period', ''),
-            sch.get('start_date', ''), sch.get('end_date', ''),
-            sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
-            schedule_id)
-        await pool.close()
-    else:
-        async with _sqlite_conn() as db:
-            await db.execute("""UPDATE schedules SET 
-                text=?, media_url=?, button_text=?, button_url=?, repeat_seconds=?, time_period=?, start_date=?, end_date=?, status=?, remove_last=?, pin=?
-                WHERE id=?""",
-                (
-                    sch.get('text', ''), sch.get('media_url', ''),
-                    sch.get('button_text', ''), sch.get('button_url', ''),
-                    sch.get('repeat_seconds', 0), sch.get('time_period', ''),
-                    sch.get('start_date', ''), sch.get('end_date', ''),
-                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
-                    schedule_id
                 )
             )
             await db.commit()
@@ -134,6 +103,7 @@ async def update_schedule_multi(schedule_id, **kwargs):
             await db.commit()
 
 async def delete_schedule(schedule_id):
+    print("[delete_schedule]", schedule_id, flush=True)
     if USE_PG:
         pool = await _pg_conn()
         async with pool.acquire() as conn:
