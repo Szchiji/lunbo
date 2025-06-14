@@ -149,6 +149,20 @@ async def update_schedule_multi(schedule_id, **kwargs):
             await db.commit()
             print("[update_schedule_multi] (SQLite) executed", flush=True)
 
+async def update_schedule_last_message_id(schedule_id, message_id):
+    print(f"[update_schedule_last_message_id] schedule_id={schedule_id}, message_id={message_id}", flush=True)
+    if USE_PG:
+        pool = await _pg_conn()
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE schedules SET last_message_id=$1 WHERE id=$2", message_id, schedule_id)
+        await pool.close()
+        print("[update_schedule_last_message_id] (PG) executed", flush=True)
+    else:
+        async with _sqlite_conn() as db:
+            await db.execute("UPDATE schedules SET last_message_id=? WHERE id=?", (message_id, schedule_id))
+            await db.commit()
+            print("[update_schedule_last_message_id] (SQLite) executed", flush=True)
+
 async def delete_schedule(schedule_id):
     print(f"[delete_schedule] schedule_id={schedule_id}", flush=True)
     if USE_PG:
