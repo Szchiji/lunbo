@@ -21,7 +21,7 @@ from modules.scheduler import (
     SELECT_GROUP, ADD_TEXT, ADD_MEDIA, ADD_BUTTON, ADD_REPEAT, ADD_PERIOD, ADD_START_DATE, ADD_END_DATE, ADD_CONFIRM,
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
 )
-from modules.sender import scheduled_sender
+from scheduled_sender import scheduled_sender
 from modules.keyboards import schedule_list_menu
 from telegram.error import BadRequest
 
@@ -61,6 +61,16 @@ async def cancel_callback(update, context):
     )
     return ConversationHandler.END
 
+async def back_to_menu_callback(update, context):
+    group_id = context.user_data.get("selected_group_id") or update.effective_chat.id
+    schedules = await fetch_schedules(group_id)
+    group_name = GROUPS.get(group_id) or str(group_id)
+    await update.callback_query.edit_message_text(
+        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
+        reply_markup=schedule_list_menu(schedules)
+    )
+    return ConversationHandler.END
+
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -73,7 +83,6 @@ def main():
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
             MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
-            # 所有菜单入口都放在 entry_points
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
             CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
             CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"),
@@ -86,6 +95,8 @@ def main():
             CallbackQueryHandler(toggle_remove_last, pattern=r"^toggle_remove_last_\d+$"),
             CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"),
             CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"),
+            # 返回按钮
+            CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
         ],
         states={
             SELECT_GROUP: [
@@ -102,13 +113,34 @@ def main():
                 MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ],
-            EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
-            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
-            EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
-            EDIT_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save)],
-            EDIT_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save)],
-            EDIT_START_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date_save)],
-            EDIT_END_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date_save)],
+            EDIT_TEXT: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
+            EDIT_MEDIA: [
+                MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), edit_media_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
+            EDIT_BUTTON: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
+            EDIT_REPEAT: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
+            EDIT_PERIOD: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
+            EDIT_START_DATE: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
+            EDIT_END_DATE: [
+                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date_save),
+                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
@@ -117,8 +149,6 @@ def main():
         allow_reentry=True
     )
     application.add_handler(conv)
-
-    # 不要再有全局 CallbackQueryHandler
 
     async def on_startup(app):
         await init_db()
