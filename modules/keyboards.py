@@ -48,7 +48,7 @@ def schedule_edit_menu(schedule: Dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🗑删除本条", callback_data=f"delete_{schedule['id']}"),
-            InlineKeyboardButton("🔙返回", callback_data="cancel"),
+            InlineKeyboardButton("🔙返回", callback_data="back_to_menu"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
