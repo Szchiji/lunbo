@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, time as dtime
 from db import fetch_schedules
-from modules.sender import send_text, send_media, build_buttons
 from telegram.constants import ParseMode
 
 last_sent = {}
@@ -51,7 +50,7 @@ async def scheduled_sender(app, target_chat_ids):
                 try:
                     schedules = await fetch_schedules(chat_id)
                 except Exception as e:
-                    print(f"[scheduled_sender] 查询群/频道 {chat_id} 的定时消息失败: {e}")
+                    print(f"查询群/频道 {chat_id} 的定时消息失败: {e}")
                     continue
                 for sch in schedules:
                     if sch.get("status", 1) != 1:
@@ -69,30 +68,34 @@ async def scheduled_sender(app, target_chat_ids):
                     try:
                         text = sch.get("text", "")
                         media = sch.get("media_url", "")
-                        media_type = sch.get("media_type")     # 新增字段
-                        buttons = sch.get("button_json") or sch.get("buttons") or None
-                        markup = build_buttons(buttons) if buttons else None
-
+                        button_text = sch.get("button_text", "")
+                        button_url = sch.get("button_url", "")
+                        markup = None
+                        if button_text and button_url:
+                            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                            markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=button_url)]])
                         if media:
-                            # 智能发送媒体（支持 file_id/直链，并自动 media_type 区分）
-                            msg = await send_media(
-                                app.bot,
-                                chat_id,
-                                media,
-                                caption=text,
-                                buttons=markup,
-                                media_type=media_type
-                            )
-                            # 如果媒体发送失败，fallback 发送文本
-                            if not msg and text:
-                                await send_text(app.bot, chat_id, text, buttons=markup, parse_mode=ParseMode.HTML)
-                        elif text:
-                            await send_text(app.bot, chat_id, text, buttons=markup, parse_mode=ParseMode.HTML)
+                            # --- 修正：支持视频 file_id、直链、图片、文档 ---
+                            if (
+                                media.endswith('.mp4')
+                                or (media.startswith('http') and ('.mp4' in media or '.mov' in media))
+                                or ((media.startswith("BAACAg") or media.startswith("BQACAg")) and len(media) > 30)
+                            ):
+                                await app.bot.send_video(chat_id=chat_id, video=media, caption=text, reply_markup=markup)
+                            elif media.startswith("http") and (media.endswith(".jpg") or media.endswith(".png")):
+                                await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
+                            elif (media.startswith("AgAC") or media.isdigit()):
+                                try:
+                                    await app.bot.send_photo(chat_id=chat_id, photo=media, caption=text, reply_markup=markup)
+                                except Exception:
+                                    await app.bot.send_document(chat_id=chat_id, document=media, caption=text, reply_markup=markup)
+                            else:
+                                await app.bot.send_message(chat_id=chat_id, text=f"{text}\n{media}", reply_markup=markup)
                         else:
-                            continue
+                            await app.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
                         last_sent[schedule_id] = now
                     except Exception as e:
-                        print(f"[scheduled_sender] 发送消息失败: {e}")
+                        print(f"定时消息发送到 {chat_id} 失败: {e}")
             await asyncio.sleep(10)
     except asyncio.CancelledError:
         print("定时群发任务已取消，退出。")
