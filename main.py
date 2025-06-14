@@ -96,7 +96,7 @@ def main():
             CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"),
             CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"),
             # 返回按钮
-            CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
+            CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),  # <--- 这里匹配 back_to_menu
         ],
         states={
             SELECT_GROUP: [
