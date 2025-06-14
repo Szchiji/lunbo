@@ -11,7 +11,9 @@ async def _sqlite_conn():
 
 async def _pg_conn():
     print("[db.py] _pg_conn() called", flush=True)
-    return await asyncpg.create_pool(dsn=POSTGRES_DSN, min_size=1, max_size=5)
+    return await asyncpg.create_pool(
+        dsn=POSTGRES_DSN, min_size=1, max_size=5, statement_cache_size=0
+    )
 
 async def fetch_schedules(chat_id):
     print(f"[fetch_schedules] chat_id={chat_id}", flush=True)
