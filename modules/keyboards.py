@@ -1,6 +1,10 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from typing import List, Dict, Optional
 
-def schedule_list_menu(schedules):
+def schedule_list_menu(schedules: List[Dict]) -> InlineKeyboardMarkup:
+    """
+    显示所有定时消息的主菜单
+    """
     keyboard = []
     if schedules and len(schedules) > 0:
         for sch in schedules:
@@ -17,7 +21,10 @@ def schedule_list_menu(schedules):
     keyboard.append([InlineKeyboardButton("➕ 添加定时消息", callback_data="add_schedule")])
     return InlineKeyboardMarkup(keyboard)
 
-def schedule_edit_menu(schedule):
+def schedule_edit_menu(schedule: Dict) -> InlineKeyboardMarkup:
+    """
+    编辑单条定时消息的菜单
+    """
     keyboard = [
         [
             InlineKeyboardButton(f"状态: {'✅启用' if schedule.get('status') else '❌关闭'}", callback_data=f"toggle_status_{schedule['id']}"),
@@ -46,7 +53,10 @@ def schedule_edit_menu(schedule):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def schedule_add_menu(step=None):
+def schedule_add_menu(step: Optional[str] = None) -> Optional[InlineKeyboardMarkup]:
+    """
+    添加定时消息时的菜单
+    """
     btns = []
     if step == "confirm":
         btns = [
@@ -57,7 +67,10 @@ def schedule_add_menu(step=None):
         btns = [[InlineKeyboardButton("取消", callback_data="cancel_add")]]
     return InlineKeyboardMarkup(btns) if btns else None
 
-def group_select_menu(groups):
+def group_select_menu(groups: Dict[int, str]) -> InlineKeyboardMarkup:
+    """
+    选择群聊菜单
+    """
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(name, callback_data=f"set_group_{gid}")]
         for gid, name in groups.items()
