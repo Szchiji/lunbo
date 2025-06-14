@@ -1,99 +1,98 @@
-import mimetypes
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+import asyncio
+from datetime import datetime, time as dtime
+from db import fetch_schedules
+from modules.sender import send_text, send_media, build_buttons
+from telegram.constants import ParseMode
 
-async def send_text(bot, chat_id, text, buttons=None, **kwargs):
-    reply_markup = buttons if buttons else None
-    return await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, **kwargs)
+last_sent = {}
 
-async def send_media(
-    bot,
-    chat_id,
-    media_url,
-    caption=None,
-    buttons=None,
-    media_type=None,  # 新增类型字段，支持 photo/video/document/animation/sticker
-    **kwargs
-):
-    """
-    更智能的媒体发送器, 优先根据 media_type 字段判断, 其次根据 URL, 最后 fallback。
-    """
-    reply_markup = buttons if buttons else None
-
-    # 优先用 media_type 字段（你表里有就传进来，没有就 None）
-    if media_type:
-        try:
-            if media_type == "photo":
-                return await bot.send_photo(chat_id=chat_id, photo=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            elif media_type == "video":
-                return await bot.send_video(chat_id=chat_id, video=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            elif media_type == "animation":
-                return await bot.send_animation(chat_id=chat_id, animation=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            elif media_type == "sticker":
-                return await bot.send_sticker(chat_id=chat_id, sticker=media_url, **kwargs)
-            elif media_type == "document" or media_type == "file":
-                return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            # fallback: 如果类型未知，尝试用 document
-            else:
-                return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-        except Exception as e:
-            print(f"[send_media] 按 media_type 发送失败: {e}")
-            # fallback
-
-    # 如果是 http(s) url，尝试用 mimetypes
-    if isinstance(media_url, str) and media_url.startswith("http"):
-        mime, _ = mimetypes.guess_type(media_url)
-        try:
-            if not mime:
-                return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            if mime.startswith('image/'):
-                return await bot.send_photo(chat_id=chat_id, photo=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            elif mime.startswith('video/'):
-                return await bot.send_video(chat_id=chat_id, video=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            else:
-                return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-        except Exception as e:
-            print(f"[send_media] mimetype 发送失败: {e}")
-            # fallback
-
-    # file_id 或未知情况, 先 document, 再 video, 最后 photo
+def _in_time_period(period: str, now: datetime):
+    if not period:
+        return True
     try:
-        return await bot.send_document(chat_id=chat_id, document=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-    except Exception as e1:
-        try:
-            return await bot.send_video(chat_id=chat_id, video=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-        except Exception as e2:
-            try:
-                return await bot.send_photo(chat_id=chat_id, photo=media_url, caption=caption, reply_markup=reply_markup, **kwargs)
-            except Exception as e3:
-                print(f"[send_media] fallback all failed: doc:{e1} video:{e2} photo:{e3}")
-                return None
-
-def build_buttons(buttons_data):
-    import json
-    if not buttons_data:
-        return None
-    if isinstance(buttons_data, str):
-        try:
-            buttons_data = json.loads(buttons_data)
-        except Exception:
-            return None
-    rows = []
-    for btn in buttons_data:
-        if isinstance(btn, list):
-            row = [InlineKeyboardButton(sub.get("text", "--"), url=sub.get("url", "")) for sub in btn]
-            rows.append(row)
+        start_str, end_str = period.split('-')
+        start = dtime.fromisoformat(start_str)
+        end = dtime.fromisoformat(end_str)
+        now_time = now.time()
+        if start <= end:
+            return start <= now_time <= end
         else:
-            rows.append([InlineKeyboardButton(btn.get("text", "--"), url=btn.get("url", ""))])
-    return InlineKeyboardMarkup(rows) if rows else None
+            return now_time >= start or now_time <= end
+    except Exception:
+        return True
 
-async def delete_message(bot, chat_id, message_id):
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception as e:
-        print(f"[delete_message] 删除消息失败: {e}")
+def _in_date_range(start_date: str, end_date: str, now: datetime):
+    fmt = "%Y-%m-%d %H:%M"
+    fmt_short = "%Y-%m-%d"
+    def parse(dt):
+        if not dt or dt in ["不限", ""]:
+            return None
+        try:
+            return datetime.strptime(dt, fmt)
+        except Exception:
+            try:
+                return datetime.strptime(dt, fmt_short)
+            except Exception:
+                return None
+    start = parse(start_date)
+    end = parse(end_date)
+    if start and now < start:
+        return False
+    if end and now > end:
+        return False
+    return True
 
-async def pin_message(bot, chat_id, message_id, disable_notification=True):
+async def scheduled_sender(app, target_chat_ids):
     try:
-        await bot.pin_chat_message(chat_id, message_id, disable_notification=disable_notification)
-    except Exception as e:
-        print(f"[pin_message] 置顶失败: {e}")
+        print("定时消息调度器启动，目标:", target_chat_ids)
+        while True:
+            now = datetime.now()
+            for chat_id in target_chat_ids:
+                try:
+                    schedules = await fetch_schedules(chat_id)
+                except Exception as e:
+                    print(f"[scheduled_sender] 查询群/频道 {chat_id} 的定时消息失败: {e}")
+                    continue
+                for sch in schedules:
+                    if sch.get("status", 1) != 1:
+                        continue
+                    schedule_id = sch["id"]
+                    repeat = sch.get("repeat_seconds", 0) or 60
+                    period = sch.get("time_period", "")
+                    if not _in_time_period(period, now):
+                        continue
+                    if not _in_date_range(sch.get("start_date", ""), sch.get("end_date", ""), now):
+                        continue
+                    last = last_sent.get(schedule_id)
+                    if last and (now - last).total_seconds() < repeat:
+                        continue
+                    try:
+                        text = sch.get("text", "")
+                        media = sch.get("media_url", "")
+                        media_type = sch.get("media_type")     # 新增字段
+                        buttons = sch.get("button_json") or sch.get("buttons") or None
+                        markup = build_buttons(buttons) if buttons else None
+
+                        if media:
+                            # 智能发送媒体（支持 file_id/直链，并自动 media_type 区分）
+                            msg = await send_media(
+                                app.bot,
+                                chat_id,
+                                media,
+                                caption=text,
+                                buttons=markup,
+                                media_type=media_type
+                            )
+                            # 如果媒体发送失败，fallback 发送文本
+                            if not msg and text:
+                                await send_text(app.bot, chat_id, text, buttons=markup, parse_mode=ParseMode.HTML)
+                        elif text:
+                            await send_text(app.bot, chat_id, text, buttons=markup, parse_mode=ParseMode.HTML)
+                        else:
+                            continue
+                        last_sent[schedule_id] = now
+                    except Exception as e:
+                        print(f"[scheduled_sender] 发送消息失败: {e}")
+            await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        print("定时群发任务已取消，退出。")
