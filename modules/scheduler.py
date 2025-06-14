@@ -50,6 +50,12 @@ async def show_edit_menu(update, context, schedule_id=None, notice=None):
         desc += f"\n[已含媒体]"
     if sch.get('button_text'):
         desc += f"\n[包含按钮：{sch['button_text']}]"
+    desc += f"\n状态：{'启用' if sch.get('status', 1) else '禁用'}"
+    desc += f"\n周期：每{sch.get('repeat_seconds',0)//60}分钟"
+    desc += f"\n时间段：{sch.get('time_period','全天')}"
+    desc += f"\n日期：{sch.get('start_date','--')} ~ {sch.get('end_date','--')}"
+    desc += f"\n删除上一条：{'是' if sch.get('remove_last') else '否'}"
+    desc += f"\n置顶：{'是' if sch.get('pin') else '否'}"
     if notice:
         desc = f"{notice}\n\n{desc}"
     try:
@@ -63,8 +69,6 @@ async def show_edit_menu(update, context, schedule_id=None, notice=None):
             await update.message.reply_text(desc, reply_markup=schedule_edit_menu(sch))
         except Exception:
             pass
-
-# ======================= 主列表与添加流程 ==========================
 
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -262,8 +266,6 @@ async def add_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("请点击“保存”按钮确认添加，或点击“取消”放弃。")
         return ADD_CONFIRM
-
-# ======================= 编辑流程 ==========================
 
 @admin_only
 async def edit_menu_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -471,7 +473,6 @@ async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("出现异常，修改未成功。")
         return EDIT_END_DATE
 
-# ====== 开关按钮 =======
 @admin_only
 async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
