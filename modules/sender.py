@@ -6,11 +6,11 @@ async def send_text(bot, chat_id, text, buttons=None, **kwargs):
     return await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, **kwargs)
 
 async def send_media(
-    bot, 
-    chat_id, 
-    media_url, 
-    caption=None, 
-    buttons=None, 
+    bot,
+    chat_id,
+    media_url,
+    caption=None,
+    buttons=None,
     media_type=None,  # 新增类型字段，支持 photo/video/document/animation/sticker
     **kwargs
 ):
