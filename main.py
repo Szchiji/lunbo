@@ -53,17 +53,22 @@ async def start(update, context):
     )
 
 async def schedule_entry(update, context):
+    # 每次都必须弹出群聊选择菜单
     await update.message.reply_text("请选择群聊：", reply_markup=group_select_menu(GROUPS))
+    return SELECT_GROUP
 
 async def select_group_callback(update, context):
     query = update.callback_query
     group_id = int(query.data.replace("set_group_", ""))
     context.user_data["selected_group_id"] = group_id
     group_name = GROUPS.get(group_id, str(group_id))
+    schedules = await fetch_schedules(group_id)
+    now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     await query.edit_message_text(
-        f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        reply_markup=group_feature_menu(group_id, group_name=group_name)
+        f"⏰【{group_name} 定时消息管理】\n时间：{now_str}\n（此页可管理所有定时消息）",
+        reply_markup=schedule_list_menu(schedules, group_name=group_name)
     )
+    return ConversationHandler.END
 
 async def group_keywords_entry(update, context):
     query = update.callback_query
@@ -130,6 +135,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule_entry))
 
+    # 群聊选择后的定时消息管理入口
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
     application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_-?\d+_keywords$"))
     application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_-?\d+_schedule$"))
@@ -137,6 +143,7 @@ def main():
     application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
 
+    # 关键词自动回复相关
     application.add_handler(CommandHandler("keyword", keywords_setting_entry))
     application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
     application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
@@ -157,7 +164,7 @@ def main():
 
     conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
+            CommandHandler("schedule", schedule_entry),
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
             CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
@@ -174,6 +181,9 @@ def main():
             CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
         ],
         states={
+            SELECT_GROUP: [
+                CallbackQueryHandler(select_group_callback, pattern="^set_group_"),
+            ],
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
