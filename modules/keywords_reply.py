@@ -3,7 +3,7 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
 import db
 
-def build_keywords_text(kws):
+def build_keywords_text(kws, group_name=""):
     if not kws:
         kw_list = "[空]"
     else:
@@ -12,6 +12,7 @@ def build_keywords_text(kws):
             for k in kws
         ])
     text = (
+        f"【{group_name} 关键词管理】\n"
         "关键词回复 [ /命令帮助 ]\n\n"
         f"已添加的关键词:\n{kw_list}\n"
         "- 表示精准触发\n"
@@ -42,22 +43,27 @@ def keyword_setting_menu():
             InlineKeyboardButton("✏️编辑", callback_data="kw_edit"),
         ],
         [
-            InlineKeyboardButton("返回", callback_data="kw_back"),
+            InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+            InlineKeyboardButton("主菜单", callback_data="main_menu"),
         ]
     ]
     return InlineKeyboardMarkup(kb)
 
 def get_current_group_id(context, update):
-    # 优先用流程已选群聊，没有则用当前聊天（支持群聊和私聊）
     group_id = context.user_data.get("selected_group_id")
     if group_id: return group_id
     if update.effective_chat: return update.effective_chat.id
     return update.effective_user.id
 
+def get_group_name(context, group_id):
+    # 优先使用 bot_data 里的 GROUPS，否则用 group_id 字符串
+    return (context.bot_data.get("GROUPS", {}) or {}).get(group_id, str(group_id))
+
 async def keywords_setting_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
-    text = build_keywords_text(kws)
+    text = build_keywords_text(kws, group_name)
     kb = keyword_setting_menu()
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=kb)
@@ -66,7 +72,13 @@ async def keywords_setting_entry(update: Update, context: ContextTypes.DEFAULT_T
 
 async def kw_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["kw_add_step"] = "keyword"
-    await update.callback_query.edit_message_text("请输入新关键词（前缀*为模糊匹配，如“*你好”）：")
+    await update.callback_query.edit_message_text(
+        "【关键词管理 - 添加】\n请输入新关键词（前缀*为模糊匹配，如“*你好”）：",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+             InlineKeyboardButton("主菜单", callback_data="main_menu")]
+        ])
+    )
 
 async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -75,7 +87,13 @@ async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kw = update.message.text.strip()
         context.user_data["kw_new_keyword"] = kw
         context.user_data["kw_add_step"] = "reply"
-        await update.message.reply_text("请输入该关键词的自动回复内容：")
+        await update.message.reply_text(
+            "请输入该关键词的自动回复内容：\n（如需取消，请点击下方按钮）",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+                 InlineKeyboardButton("主菜单", callback_data="main_menu")]
+            ])
+        )
         return
     elif step == "reply":
         kw = context.user_data.get("kw_new_keyword")
@@ -90,6 +108,7 @@ async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def kw_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有可删除的关键词")
@@ -98,8 +117,14 @@ async def kw_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_remove_{k['keyword']}")]
         for k in kws
     ]
-    buttons.append([InlineKeyboardButton("返回", callback_data="kw_back")])
-    await update.callback_query.edit_message_text("请选择要删除的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
+    buttons.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
+    await update.callback_query.edit_message_text(
+        f"【{group_name} 关键词管理 - 删除】\n请选择要删除的关键词：",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 async def kw_remove_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -112,6 +137,7 @@ async def kw_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def kw_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有关键词")
@@ -120,8 +146,14 @@ async def kw_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_enable_{k['keyword']}")]
         for k in kws
     ]
-    buttons.append([InlineKeyboardButton("返回", callback_data="kw_back")])
-    await update.callback_query.edit_message_text("请选择要启用的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
+    buttons.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
+    await update.callback_query.edit_message_text(
+        f"【{group_name} 关键词管理 - 启用】\n请选择要启用的关键词：",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 async def kw_enable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -131,6 +163,7 @@ async def kw_enable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def kw_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有关键词")
@@ -139,8 +172,14 @@ async def kw_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_disable_{k['keyword']}")]
         for k in kws
     ]
-    buttons.append([InlineKeyboardButton("返回", callback_data="kw_back")])
-    await update.callback_query.edit_message_text("请选择要关闭的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
+    buttons.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
+    await update.callback_query.edit_message_text(
+        f"【{group_name} 关键词管理 - 禁用】\n请选择要关闭的关键词：",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 async def kw_disable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -150,6 +189,7 @@ async def kw_disable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def kw_delay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     data = update.callback_query.data
     delay = int(data.replace("kw_delay_", ""))
     context.user_data["kw_delay_set"] = delay
@@ -161,8 +201,14 @@ async def kw_delay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_delayset_{k['keyword']}")]
         for k in kws
     ]
-    buttons.append([InlineKeyboardButton("返回", callback_data="kw_back")])
-    await update.callback_query.edit_message_text(f"请选择要设置延时删除的关键词（当前设置为{delay}分钟）：", reply_markup=InlineKeyboardMarkup(buttons))
+    buttons.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
+    await update.callback_query.edit_message_text(
+        f"【{group_name} 关键词管理 - 延时删除】\n请选择要设置延时删除的关键词（当前设置为{delay}分钟）：",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 async def kw_delayset_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -173,6 +219,7 @@ async def kw_delayset_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def kw_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有可编辑的关键词")
@@ -181,11 +228,18 @@ async def kw_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_edit_{k['keyword']}")]
         for k in kws
     ]
-    buttons.append([InlineKeyboardButton("返回", callback_data="kw_back")])
-    await update.callback_query.edit_message_text("请选择要编辑的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
+    buttons.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
+    await update.callback_query.edit_message_text(
+        f"【{group_name} 关键词管理 - 编辑】\n请选择要编辑的关键词：",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 async def kw_edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
+    group_name = get_group_name(context, group_id)
     keyword = update.callback_query.data.replace("kw_edit_", "")
     context.user_data["kw_edit_keyword"] = keyword
     kws = await db.fetch_keywords(group_id)
@@ -199,7 +253,11 @@ async def kw_edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data['kw_edit_fuzzy'] = fuzzy
     await update.callback_query.edit_message_text(
-        f"原关键词：{'*' if fuzzy else ''}{keyword}\n原回复内容：{old_reply}\n\n请直接发送新的回复内容："
+        f"【{group_name} 关键词管理 - 编辑】\n原关键词：{'*' if fuzzy else ''}{keyword}\n原回复内容：{old_reply}\n\n请直接发送新的回复内容：",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+             InlineKeyboardButton("主菜单", callback_data="main_menu")]
+        ])
     )
 
 async def kw_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
