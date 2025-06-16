@@ -29,8 +29,27 @@ from modules.keywords_reply import (
     kw_edit, kw_edit_entry, kw_edit_save
 )
 from telegram.error import BadRequest
+import datetime
 
 logging.basicConfig(level=logging.INFO)
+
+# ===== 1. 新增返回上一级、主菜单通用回调 =====
+
+async def back_to_prev_callback(update, context):
+    group_id = context.user_data.get("selected_group_id")
+    group_name = GROUPS.get(group_id, str(group_id))
+    await update.callback_query.edit_message_text(
+        f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        reply_markup=group_feature_menu(group_id)
+    )
+
+async def main_menu_callback(update, context):
+    await update.callback_query.edit_message_text(
+        "请选择群聊：\n\n操作时间：{}".format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+        reply_markup=group_select_menu(GROUPS)
+    )
+
+# ===== 2. 入口相关 =====
 
 async def start(update, context):
     await update.message.reply_text(
@@ -48,7 +67,7 @@ async def select_group_callback(update, context):
     context.user_data["selected_group_id"] = group_id
     group_name = GROUPS.get(group_id, str(group_id))
     await query.edit_message_text(
-        f"已选择群聊：{group_name}\n请选择要管理的功能：",
+        f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         reply_markup=group_feature_menu(group_id)
     )
 
@@ -66,9 +85,11 @@ async def group_schedule_entry(update, context):
     schedules = await fetch_schedules(group_id)
     group_name = GROUPS.get(group_id) or str(group_id)
     await query.edit_message_text(
-        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
+        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         reply_markup=schedule_list_menu(schedules)
     )
+
+# ===== 3. 其它通用辅助 =====
 
 async def cancel(update, context):
     if update.message:
@@ -122,6 +143,10 @@ def main():
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
     application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"))
     application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"))
+
+    # 通用菜单回退
+    application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
+    application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
 
     # 关键词相关 handler
     application.add_handler(CommandHandler("keyword", keywords_setting_entry))
