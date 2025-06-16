@@ -1,7 +1,7 @@
 import asyncio
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
-import db  # 假设 db.py 和本文件在同一目录
+import db
 
 def build_keywords_text(kws):
     if not kws:
@@ -47,9 +47,16 @@ def keyword_setting_menu():
     ]
     return InlineKeyboardMarkup(kb)
 
+def get_current_group_id(context, update):
+    # 优先用流程已选群聊，没有则用当前聊天（支持群聊和私聊）
+    group_id = context.user_data.get("selected_group_id")
+    if group_id: return group_id
+    if update.effective_chat: return update.effective_chat.id
+    return update.effective_user.id
+
 async def keywords_setting_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    kws = await db.fetch_keywords(user_id)
+    group_id = get_current_group_id(context, update)
+    kws = await db.fetch_keywords(group_id)
     text = build_keywords_text(kws)
     kb = keyword_setting_menu()
     if update.callback_query:
@@ -62,7 +69,7 @@ async def kw_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text("请输入新关键词（前缀*为模糊匹配，如“*你好”）：")
 
 async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     step = context.user_data.get("kw_add_step")
     if step == "keyword":
         kw = update.message.text.strip()
@@ -75,19 +82,18 @@ async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = update.message.text.strip()
         fuzzy = kw.startswith("*")
         keyword = kw.lstrip("*")
-        await db.add_keyword(user_id, keyword, reply, int(fuzzy), 1, 0)
+        await db.add_keyword(group_id, keyword, reply, int(fuzzy), 1, 0)
         await keywords_setting_entry(update, context)
         context.user_data.pop("kw_add_step", None)
         context.user_data.pop("kw_new_keyword", None)
         return
 
 async def kw_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    kws = await db.fetch_keywords(user_id)
+    group_id = get_current_group_id(context, update)
+    kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有可删除的关键词")
         return
-    context.user_data["kw_remove"] = True
     buttons = [
         [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_remove_{k['keyword']}")]
         for k in kws
@@ -96,17 +102,17 @@ async def kw_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text("请选择要删除的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def kw_remove_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     keyword = update.callback_query.data.replace("kw_remove_", "")
-    await db.remove_keyword(user_id, keyword)
+    await db.remove_keyword(group_id, keyword)
     await keywords_setting_entry(update, context)
 
 async def kw_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await keywords_setting_entry(update, context)
 
 async def kw_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    kws = await db.fetch_keywords(user_id)
+    group_id = get_current_group_id(context, update)
+    kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有关键词")
         return
@@ -118,14 +124,14 @@ async def kw_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text("请选择要启用的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def kw_enable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     keyword = update.callback_query.data.replace("kw_enable_", "")
-    await db.update_keyword_enable(user_id, keyword, 1)
+    await db.update_keyword_enable(group_id, keyword, 1)
     await keywords_setting_entry(update, context)
 
 async def kw_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    kws = await db.fetch_keywords(user_id)
+    group_id = get_current_group_id(context, update)
+    kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有关键词")
         return
@@ -137,17 +143,17 @@ async def kw_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text("请选择要关闭的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def kw_disable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     keyword = update.callback_query.data.replace("kw_disable_", "")
-    await db.update_keyword_enable(user_id, keyword, 0)
+    await db.update_keyword_enable(group_id, keyword, 0)
     await keywords_setting_entry(update, context)
 
 async def kw_delay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     data = update.callback_query.data
     delay = int(data.replace("kw_delay_", ""))
     context.user_data["kw_delay_set"] = delay
-    kws = await db.fetch_keywords(user_id)
+    kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有关键词")
         return
@@ -159,17 +165,15 @@ async def kw_delay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text(f"请选择要设置延时删除的关键词（当前设置为{delay}分钟）：", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def kw_delayset_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     keyword = update.callback_query.data.replace("kw_delayset_", "")
     delay = context.user_data.get("kw_delay_set", 0)
-    await db.update_keyword_delay(user_id, keyword, delay)
+    await db.update_keyword_delay(group_id, keyword, delay)
     await keywords_setting_entry(update, context)
 
-# ============ 编辑关键词内容 ============
-
 async def kw_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    kws = await db.fetch_keywords(user_id)
+    group_id = get_current_group_id(context, update)
+    kws = await db.fetch_keywords(group_id)
     if not kws:
         await update.callback_query.answer("没有可编辑的关键词")
         return
@@ -181,12 +185,10 @@ async def kw_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text("请选择要编辑的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def kw_edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     keyword = update.callback_query.data.replace("kw_edit_", "")
-    # 记录当前编辑
     context.user_data["kw_edit_keyword"] = keyword
-    # 拉出旧内容
-    kws = await db.fetch_keywords(user_id)
+    kws = await db.fetch_keywords(group_id)
     for k in kws:
         if k['keyword'] == keyword:
             old_reply = k['reply']
@@ -201,20 +203,18 @@ async def kw_edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def kw_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    group_id = get_current_group_id(context, update)
     keyword = context.user_data.get("kw_edit_keyword")
     fuzzy = context.user_data.get("kw_edit_fuzzy", 0)
     if not keyword:
         await update.message.reply_text("未选择关键词。")
         return
     reply = update.message.text.strip()
-    await db.update_keyword_reply(user_id, keyword, reply)
+    await db.update_keyword_reply(group_id, keyword, reply)
     await update.message.reply_text("修改成功！")
     context.user_data.pop("kw_edit_keyword", None)
     context.user_data.pop("kw_edit_fuzzy", None)
     await keywords_setting_entry(update, context)
-
-# =============================================
 
 async def keyword_autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = update.effective_chat.id
