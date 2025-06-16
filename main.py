@@ -2,7 +2,7 @@ import logging
 import os
 import asyncio
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, ConversationHandler, MessageHandler, CallbackQueryHandler, filters
+    ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
 from config import BOT_TOKEN, WEBHOOK_URL, GROUPS
 from db import init_db, fetch_schedules
@@ -33,7 +33,45 @@ from telegram.error import BadRequest
 logging.basicConfig(level=logging.INFO)
 
 async def start(update, context):
-    await update.message.reply_text("欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /keyword 可管理关键词自动回复。")
+    await update.message.reply_text(
+        "欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /keyword 可管理关键词自动回复。"
+    )
+
+# 入口，先选择群聊
+async def schedule_entry(update, context):
+    await update.message.reply_text("请选择群聊：", reply_markup=group_select_menu(GROUPS))
+
+# 群聊选择后弹功能菜单
+async def select_group_callback(update, context):
+    query = update.callback_query
+    group_id = int(query.data.replace("set_group_", ""))
+    context.user_data["selected_group_id"] = group_id
+    group_name = GROUPS.get(group_id, str(group_id))
+    await query.edit_message_text(
+        f"已选择群聊：{group_name}\n请选择要管理的功能：",
+        reply_markup=group_feature_menu(group_id)
+    )
+
+# 功能菜单分流 handler
+async def group_keywords_entry(update, context):
+    query = update.callback_query
+    group_id = int(query.data.replace("group_", "").replace("_keywords", ""))
+    context.user_data["selected_group_id"] = group_id
+    await keywords_setting_entry(update, context)
+
+async def group_schedule_entry(update, context):
+    query = update.callback_query
+    group_id = int(query.data.replace("group_", "").replace("_schedule", ""))
+    context.user_data["selected_group_id"] = group_id
+    schedules = await fetch_schedules(group_id)
+    group_name = GROUPS.get(group_id) or str(group_id)
+    await query.edit_message_text(
+        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
+        reply_markup=schedule_list_menu(schedules)
+    )
+
+# 关键词管理与定时消息管理的回调与原有一致
+# ConversationHandler 只处理定时消息的增删改查，不负责入口（入口统一先分流）
 
 async def cancel(update, context):
     if update.message:
@@ -76,44 +114,21 @@ async def back_to_menu_callback(update, context):
     )
     return ConversationHandler.END
 
-# 群聊选择后弹出功能菜单
-async def select_group_callback(update, context):
-    query = update.callback_query
-    group_id = int(query.data.replace("set_group_", ""))
-    context.user_data["selected_group_id"] = group_id
-    group_name = GROUPS.get(group_id, str(group_id))
-    await query.edit_message_text(
-        f"已选择群聊：{group_name}\n请选择要管理的功能：",
-        reply_markup=group_feature_menu(group_id)
-    )
-
-# 功能菜单分流 handler
-async def group_keywords_entry(update, context):
-    query = update.callback_query
-    group_id = int(query.data.replace("group_", "").replace("_keywords", ""))
-    # 进入关键词管理界面，把当前群聊id传递给管理菜单
-    context.user_data["selected_group_id"] = group_id
-    await keywords_setting_entry(update, context)
-
-async def group_schedule_entry(update, context):
-    query = update.callback_query
-    group_id = int(query.data.replace("group_", "").replace("_schedule", ""))
-    context.user_data["selected_group_id"] = group_id
-    schedules = await fetch_schedules(group_id)
-    group_name = GROUPS.get(group_id) or str(group_id)
-    await query.edit_message_text(
-        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
-        reply_markup=schedule_list_menu(schedules)
-    )
-
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # 入口：/schedule 先选择群聊
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("schedule", schedule_entry))
+
+    # 先选群聊，再选功能
+    application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
+    application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"))
+    application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"))
+
+    # 关键词相关 handler
     application.add_handler(CommandHandler("keyword", keywords_setting_entry))
     application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
-
-    # 关键词相关按钮和菜单
     application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
     application.add_handler(CallbackQueryHandler(kw_add_start, pattern="^kw_add$"))
     application.add_handler(CallbackQueryHandler(kw_remove, pattern="^kw_remove$"))
@@ -126,30 +141,15 @@ def main():
     application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_"))
     application.add_handler(CallbackQueryHandler(kw_edit, pattern="^kw_edit$"))
     application.add_handler(CallbackQueryHandler(kw_edit_entry, pattern=r"^kw_edit_"))
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_add_receive))
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_edit_save))
+    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
-    # 私聊关键词添加和编辑流程
-    application.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND),
-        kw_add_receive
-    ))
-    application.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND),
-        kw_edit_save
-    ))
-
-    # 群聊自动关键词回复
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.ChatType.GROUPS,
-        keyword_autoreply
-    ))
-
+    # 定时消息相关 handler（用ConversationHandler管理流程）
     conv = ConversationHandler(
         entry_points=[
-            CommandHandler("schedule", show_schedule_list),
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
-            MessageHandler(filters.Regex("^/schedule$"), show_schedule_list),
-            MessageHandler(filters.Regex("^查看定时消息$"), show_schedule_list),
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
             CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
             CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"),
