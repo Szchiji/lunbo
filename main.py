@@ -25,14 +25,15 @@ from scheduled_sender import scheduled_sender
 from modules.keyboards import schedule_list_menu, group_feature_menu, group_select_menu
 from modules.keywords_reply import (
     keywords_setting_entry, kw_add_start, kw_add_receive, kw_remove, kw_remove_confirm, kw_enable, kw_enable_confirm,
-    kw_disable, kw_disable_confirm, kw_delay, kw_delayset_confirm, kw_back, keyword_autoreply
+    kw_disable, kw_disable_confirm, kw_delay, kw_delayset_confirm, kw_back, keyword_autoreply,
+    kw_edit, kw_edit_entry, kw_edit_save
 )
 from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
 
 async def start(update, context):
-    await update.message.reply_text("欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /关键词 可管理关键词自动回复。")
+    await update.message.reply_text("欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /keyword 可管理关键词自动回复。")
 
 async def cancel(update, context):
     if update.message:
@@ -109,25 +110,38 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("关键词", keywords_setting_entry))
+    application.add_handler(CommandHandler("keyword", keywords_setting_entry))
+    application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
 
     # 关键词相关按钮和菜单
     application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
     application.add_handler(CallbackQueryHandler(kw_add_start, pattern="^kw_add$"))
     application.add_handler(CallbackQueryHandler(kw_remove, pattern="^kw_remove$"))
-    application.add_handler(CallbackQueryHandler(kw_remove_confirm, pattern=r"^kw_remove_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_remove_confirm, pattern=r"^kw_remove_"))
     application.add_handler(CallbackQueryHandler(kw_enable, pattern="^kw_enable$"))
-    application.add_handler(CallbackQueryHandler(kw_enable_confirm, pattern=r"^kw_enable_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_enable_confirm, pattern=r"^kw_enable_"))
     application.add_handler(CallbackQueryHandler(kw_disable, pattern="^kw_disable$"))
-    application.add_handler(CallbackQueryHandler(kw_disable_confirm, pattern=r"^kw_disable_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_disable_confirm, pattern=r"^kw_disable_"))
     application.add_handler(CallbackQueryHandler(kw_delay, pattern=r"^kw_delay_\d+$"))
-    application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_"))
+    application.add_handler(CallbackQueryHandler(kw_edit, pattern="^kw_edit$"))
+    application.add_handler(CallbackQueryHandler(kw_edit_entry, pattern=r"^kw_edit_"))
 
-    # 私聊关键词添加流程
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT, kw_add_receive))
+    # 私聊关键词添加和编辑流程
+    application.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND),
+        kw_add_receive
+    ))
+    application.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND),
+        kw_edit_save
+    ))
 
     # 群聊自动关键词回复
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.ChatType.GROUPS,
+        keyword_autoreply
+    ))
 
     conv = ConversationHandler(
         entry_points=[
@@ -225,7 +239,6 @@ def main():
     application.post_init = on_startup
     application.post_shutdown = on_shutdown
 
-    # 生产环境永远用 webhook！
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 8080)),
