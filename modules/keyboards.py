@@ -1,7 +1,7 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from typing import List, Dict, Optional
 
-def schedule_list_menu(schedules: List[Dict]) -> InlineKeyboardMarkup:
+def schedule_list_menu(schedules: List[Dict], group_name: str = "") -> InlineKeyboardMarkup:
     """
     显示所有定时消息的主菜单
     """
@@ -19,9 +19,14 @@ def schedule_list_menu(schedules: List[Dict]) -> InlineKeyboardMarkup:
     else:
         keyboard.append([InlineKeyboardButton("暂无定时消息", callback_data="noop")])
     keyboard.append([InlineKeyboardButton("➕ 添加定时消息", callback_data="add_schedule")])
+    # 增加返回按钮
+    keyboard.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
     return InlineKeyboardMarkup(keyboard)
 
-def schedule_edit_menu(schedule: Dict) -> InlineKeyboardMarkup:
+def schedule_edit_menu(schedule: Dict, group_name: str = "") -> InlineKeyboardMarkup:
     """
     编辑单条定时消息的菜单
     """
@@ -48,7 +53,10 @@ def schedule_edit_menu(schedule: Dict) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🗑删除本条", callback_data=f"delete_{schedule['id']}"),
-            InlineKeyboardButton("🔙返回", callback_data="back_to_menu"),
+        ],
+        [
+            InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+            InlineKeyboardButton("主菜单", callback_data="main_menu"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -65,18 +73,25 @@ def schedule_add_menu(step: Optional[str] = None) -> Optional[InlineKeyboardMark
         ]
     elif step:
         btns = [[InlineKeyboardButton("取消", callback_data="cancel_add")]]
+    # 增加返回按钮
+    btns.append([
+        InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+        InlineKeyboardButton("主菜单", callback_data="main_menu"),
+    ])
     return InlineKeyboardMarkup(btns) if btns else None
 
 def group_select_menu(groups: Dict[int, str]) -> InlineKeyboardMarkup:
     """
     选择群聊菜单
     """
-    return InlineKeyboardMarkup([
+    keyboard = [
         [InlineKeyboardButton(name, callback_data=f"set_group_{gid}")]
         for gid, name in groups.items()
-    ])
+    ]
+    # 主菜单通常就是群聊选择页，此处可不加返回
+    return InlineKeyboardMarkup(keyboard)
 
-def group_feature_menu(group_id: int) -> InlineKeyboardMarkup:
+def group_feature_menu(group_id: int, group_name: str = "") -> InlineKeyboardMarkup:
     """
     某个群聊下的功能选择菜单
     """
@@ -84,6 +99,10 @@ def group_feature_menu(group_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("关键词回复", callback_data=f"group_{group_id}_keywords"),
             InlineKeyboardButton("定时消息", callback_data=f"group_{group_id}_schedule"),
+        ],
+        [
+            InlineKeyboardButton("返回上一级", callback_data="back_to_prev"),
+            InlineKeyboardButton("主菜单", callback_data="main_menu"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
