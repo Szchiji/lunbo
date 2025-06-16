@@ -131,8 +131,8 @@ def main():
     application.add_handler(CommandHandler("schedule", schedule_entry))
 
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
-    application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"))
-    application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"))
+    application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_-?\d+_keywords$"))
+    application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_-?\d+_schedule$"))
 
     application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
