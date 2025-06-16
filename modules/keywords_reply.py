@@ -1,7 +1,7 @@
 import asyncio
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
-import db  # 假设 db.py 和本文件在同一个项目下
+import db  # 假设 db.py 和本文件在同一目录
 
 def build_keywords_text(kws):
     if not kws:
@@ -39,6 +39,7 @@ def keyword_setting_menu():
         [
             InlineKeyboardButton("👍🏻添加", callback_data="kw_add"),
             InlineKeyboardButton("🗑删除", callback_data="kw_remove"),
+            InlineKeyboardButton("✏️编辑", callback_data="kw_edit"),
         ],
         [
             InlineKeyboardButton("返回", callback_data="kw_back"),
@@ -164,7 +165,57 @@ async def kw_delayset_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
     await db.update_keyword_delay(user_id, keyword, delay)
     await keywords_setting_entry(update, context)
 
-# 群聊自动回复（群内必须加 bot，并有权限）
+# ============ 编辑关键词内容 ============
+
+async def kw_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    kws = await db.fetch_keywords(user_id)
+    if not kws:
+        await update.callback_query.answer("没有可编辑的关键词")
+        return
+    buttons = [
+        [InlineKeyboardButton(f"{'*' if k['fuzzy'] else '-'} {k['keyword']}", callback_data=f"kw_edit_{k['keyword']}")]
+        for k in kws
+    ]
+    buttons.append([InlineKeyboardButton("返回", callback_data="kw_back")])
+    await update.callback_query.edit_message_text("请选择要编辑的关键词：", reply_markup=InlineKeyboardMarkup(buttons))
+
+async def kw_edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    keyword = update.callback_query.data.replace("kw_edit_", "")
+    # 记录当前编辑
+    context.user_data["kw_edit_keyword"] = keyword
+    # 拉出旧内容
+    kws = await db.fetch_keywords(user_id)
+    for k in kws:
+        if k['keyword'] == keyword:
+            old_reply = k['reply']
+            fuzzy = k.get('fuzzy', 0)
+            break
+    else:
+        await update.callback_query.answer("关键词不存在")
+        return
+    context.user_data['kw_edit_fuzzy'] = fuzzy
+    await update.callback_query.edit_message_text(
+        f"原关键词：{'*' if fuzzy else ''}{keyword}\n原回复内容：{old_reply}\n\n请直接发送新的回复内容："
+    )
+
+async def kw_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    keyword = context.user_data.get("kw_edit_keyword")
+    fuzzy = context.user_data.get("kw_edit_fuzzy", 0)
+    if not keyword:
+        await update.message.reply_text("未选择关键词。")
+        return
+    reply = update.message.text.strip()
+    await db.update_keyword_reply(user_id, keyword, reply)
+    await update.message.reply_text("修改成功！")
+    context.user_data.pop("kw_edit_keyword", None)
+    context.user_data.pop("kw_edit_fuzzy", None)
+    await keywords_setting_entry(update, context)
+
+# =============================================
+
 async def keyword_autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = update.effective_chat.id
     if update.effective_chat.type not in ("group", "supergroup"):
