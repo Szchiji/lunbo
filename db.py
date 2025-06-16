@@ -15,6 +15,10 @@ async def _pg_conn():
         dsn=POSTGRES_DSN, min_size=1, max_size=5, statement_cache_size=0
     )
 
+# ========================
+# 定时消息相关
+# ========================
+
 async def fetch_schedules(chat_id):
     print(f"[fetch_schedules] chat_id={chat_id}", flush=True)
     try:
@@ -202,6 +206,157 @@ async def delete_schedule(schedule_id):
     except Exception as e:
         print(f"[delete_schedule] ERROR: {e}", flush=True)
 
+# ========================
+# 关键词回复相关
+# ========================
+
+async def init_keywords_table():
+    print("[init_keywords_table] called", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS keywords (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    keyword TEXT NOT NULL,
+                    reply TEXT NOT NULL,
+                    fuzzy INTEGER DEFAULT 0,
+                    enabled INTEGER DEFAULT 1,
+                    delay INTEGER DEFAULT 0
+                );
+                """)
+            await pool.close()
+            print("[init_keywords_table] (PG) executed", flush=True)
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute("""
+                CREATE TABLE IF NOT EXISTS keywords (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    keyword TEXT NOT NULL,
+                    reply TEXT NOT NULL,
+                    fuzzy INTEGER DEFAULT 0,
+                    enabled INTEGER DEFAULT 1,
+                    delay INTEGER DEFAULT 0
+                );
+                """)
+                await db.commit()
+                print("[init_keywords_table] (SQLite) executed", flush=True)
+    except Exception as e:
+        print(f"[init_keywords_table] ERROR: {e}", flush=True)
+
+async def fetch_keywords(chat_id):
+    print(f"[fetch_keywords] chat_id={chat_id}", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT * FROM keywords WHERE chat_id=$1 ORDER BY id ASC", chat_id)
+            await pool.close()
+            return [dict(row) for row in rows]
+        else:
+            async with _sqlite_conn() as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM keywords WHERE chat_id=? ORDER BY id ASC", (chat_id,))
+                rows = await cursor.fetchall()
+                await cursor.close()
+                return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"[fetch_keywords] ERROR: {e}", flush=True)
+        return []
+
+async def add_keyword(chat_id, keyword, reply, fuzzy, enabled=1, delay=0):
+    print(f"[add_keyword] chat_id={chat_id}, keyword={keyword}", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO keywords (chat_id, keyword, reply, fuzzy, enabled, delay) VALUES ($1, $2, $3, $4, $5, $6)",
+                    chat_id, keyword, reply, int(fuzzy), int(enabled), int(delay)
+                )
+            await pool.close()
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute(
+                    "INSERT INTO keywords (chat_id, keyword, reply, fuzzy, enabled, delay) VALUES (?, ?, ?, ?, ?, ?)",
+                    (chat_id, keyword, reply, int(fuzzy), int(enabled), int(delay))
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[add_keyword] ERROR: {e}", flush=True)
+
+async def remove_keyword(chat_id, keyword):
+    print(f"[remove_keyword] chat_id={chat_id}, keyword={keyword}", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM keywords WHERE chat_id=$1 AND keyword=$2",
+                    chat_id, keyword
+                )
+            await pool.close()
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute(
+                    "DELETE FROM keywords WHERE chat_id=? AND keyword=?",
+                    (chat_id, keyword)
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[remove_keyword] ERROR: {e}", flush=True)
+
+async def update_keyword_enable(chat_id, keyword, enabled):
+    print(f"[update_keyword_enable] chat_id={chat_id}, keyword={keyword}, enabled={enabled}", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE keywords SET enabled=$1 WHERE chat_id=$2 AND keyword=$3",
+                    int(enabled), chat_id, keyword
+                )
+            await pool.close()
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute(
+                    "UPDATE keywords SET enabled=? WHERE chat_id=? AND keyword=?",
+                    (int(enabled), chat_id, keyword)
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[update_keyword_enable] ERROR: {e}", flush=True)
+
+async def update_keyword_delay(chat_id, keyword, delay):
+    print(f"[update_keyword_delay] chat_id={chat_id}, keyword={keyword}, delay={delay}", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE keywords SET delay=$1 WHERE chat_id=$2 AND keyword=$3",
+                    int(delay), chat_id, keyword
+                )
+            await pool.close()
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute(
+                    "UPDATE keywords SET delay=? WHERE chat_id=? AND keyword=?",
+                    (int(delay), chat_id, keyword)
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[update_keyword_delay] ERROR: {e}", flush=True)
+
+# ========================
+# 数据库初始化
+# ========================
+
 async def init_db():
     print("[init_db] called", flush=True)
     try:
@@ -250,5 +405,7 @@ async def init_db():
                 """)
                 await db.commit()
                 print("[init_db] (SQLite) executed", flush=True)
+        # 关键词表初始化
+        await init_keywords_table()
     except Exception as e:
         print(f"[init_db] ERROR: {e}", flush=True)
