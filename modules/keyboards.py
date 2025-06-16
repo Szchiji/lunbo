@@ -75,3 +75,15 @@ def group_select_menu(groups: Dict[int, str]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(name, callback_data=f"set_group_{gid}")]
         for gid, name in groups.items()
     ])
+
+def group_feature_menu(group_id: int) -> InlineKeyboardMarkup:
+    """
+    某个群聊下的功能选择菜单
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton("关键词回复", callback_data=f"group_{group_id}_keywords"),
+            InlineKeyboardButton("定时消息", callback_data=f"group_{group_id}_schedule"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
