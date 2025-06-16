@@ -86,7 +86,7 @@ async def group_schedule_entry(update, context):
     group_name = GROUPS.get(group_id) or str(group_id)
     await query.edit_message_text(
         f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        reply_markup=schedule_list_menu(schedules)
+        reply_markup=schedule_list_menu(schedules, group_name=group_name)
     )
 
 # ===== 3. 其它通用辅助 =====
@@ -118,7 +118,7 @@ async def cancel_callback(update, context):
     group_name = GROUPS.get(group_id) or str(group_id)
     await query.message.chat.send_message(
         f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
-        reply_markup=schedule_list_menu(schedules)
+        reply_markup=schedule_list_menu(schedules, group_name=group_name)
     )
     return ConversationHandler.END
 
@@ -128,7 +128,7 @@ async def back_to_menu_callback(update, context):
     group_name = GROUPS.get(group_id) or str(group_id)
     await update.callback_query.edit_message_text(
         f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
-        reply_markup=schedule_list_menu(schedules)
+        reply_markup=schedule_list_menu(schedules, group_name=group_name)
     )
     return ConversationHandler.END
 
@@ -237,6 +237,8 @@ def main():
 
     async def on_startup(app):
         await init_db()
+        # 让关键词管理模块可以方便获取群聊名
+        app.bot_data["GROUPS"] = GROUPS
         logging.info("数据库初始化完成")
         global bg_task
         bg_task = asyncio.create_task(
