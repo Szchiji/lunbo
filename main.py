@@ -7,7 +7,7 @@ from telegram.ext import (
 from config import BOT_TOKEN, WEBHOOK_URL, GROUPS
 from db import init_db, fetch_schedules
 from modules.scheduler import (
-    show_schedule_list, entry_add_schedule, select_group_callback, confirm_callback,
+    show_schedule_list, entry_add_schedule, confirm_callback,
     add_text, add_media, add_button, add_repeat, add_period, add_start_date, add_end_date, add_confirm,
     edit_menu_entry,
     edit_text_entry, edit_text_save,
@@ -22,7 +22,7 @@ from modules.scheduler import (
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
 )
 from scheduled_sender import scheduled_sender
-from modules.keyboards import schedule_list_menu
+from modules.keyboards import schedule_list_menu, group_feature_menu
 from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +71,36 @@ async def back_to_menu_callback(update, context):
     )
     return ConversationHandler.END
 
+# 新增：群聊选择后弹出功能菜单
+async def select_group_callback(update, context):
+    query = update.callback_query
+    group_id = int(query.data.replace("set_group_", ""))
+    context.user_data["selected_group_id"] = group_id
+    group_name = GROUPS.get(group_id, str(group_id))
+    await query.edit_message_text(
+        f"已选择群聊：{group_name}\n请选择要管理的功能：",
+        reply_markup=group_feature_menu(group_id)
+    )
+
+# 新增：功能菜单分流 handler
+async def group_keywords_entry(update, context):
+    query = update.callback_query
+    group_id = int(query.data.replace("group_", "").replace("_keywords", ""))
+    # 这里进入关键词回复管理界面。可替换为实际的关键词管理逻辑。
+    await query.edit_message_text(
+        f"【群聊 {GROUPS.get(group_id, group_id)}】\n\n关键词回复管理功能开发中…"
+    )
+
+async def group_schedule_entry(update, context):
+    query = update.callback_query
+    group_id = int(query.data.replace("group_", "").replace("_schedule", ""))
+    schedules = await fetch_schedules(group_id)
+    group_name = GROUPS.get(group_id) or str(group_id)
+    await query.edit_message_text(
+        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。",
+        reply_markup=schedule_list_menu(schedules)
+    )
+
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -96,11 +126,13 @@ def main():
             CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"),
             CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"),
             # 返回按钮
-            CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),  # <--- 这里匹配 back_to_menu
+            CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
         ],
         states={
             SELECT_GROUP: [
-                CallbackQueryHandler(select_group_callback, pattern="^set_group_")
+                CallbackQueryHandler(select_group_callback, pattern="^set_group_"),
+                CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"),
+                CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"),
             ],
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), add_media)],
