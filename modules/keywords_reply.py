@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
 import db
@@ -12,8 +13,6 @@ def build_keywords_text(kws, group_name=""):
             for k in kws
         ])
     text = (
-        f"【{group_name} 关键词管理】\n"
-        "关键词回复 [ /命令帮助 ]\n\n"
         f"已添加的关键词:\n{kw_list}\n"
         "- 表示精准触发\n"
         "* 表示包含触发"
@@ -56,14 +55,19 @@ def get_current_group_id(context, update):
     return update.effective_user.id
 
 def get_group_name(context, group_id):
-    # 优先使用 bot_data 里的 GROUPS，否则用 group_id 字符串
     return (context.bot_data.get("GROUPS", {}) or {}).get(group_id, str(group_id))
 
 async def keywords_setting_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
     group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
-    text = build_keywords_text(kws, group_name)
+    now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    text = (
+        f"📝【{group_name} 关键词管理】\n"
+        f"时间：{now_str}\n"
+        "（此页可管理关键词自动回复）\n" +
+        build_keywords_text(kws, group_name)
+    )
     kb = keyword_setting_menu()
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=kb)
