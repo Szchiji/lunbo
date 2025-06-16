@@ -22,13 +22,17 @@ from modules.scheduler import (
     EDIT_TEXT, EDIT_MEDIA, EDIT_BUTTON, EDIT_REPEAT, EDIT_PERIOD, EDIT_START_DATE, EDIT_END_DATE,
 )
 from scheduled_sender import scheduled_sender
-from modules.keyboards import schedule_list_menu, group_feature_menu
+from modules.keyboards import schedule_list_menu, group_feature_menu, group_select_menu
+from modules.keywords_reply import (
+    keywords_setting_entry, kw_add_start, kw_add_receive, kw_remove, kw_remove_confirm, kw_enable, kw_enable_confirm,
+    kw_disable, kw_disable_confirm, kw_delay, kw_delayset_confirm, kw_back, keyword_autoreply
+)
 from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
 
 async def start(update, context):
-    await update.message.reply_text("欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。")
+    await update.message.reply_text("欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /关键词 可管理关键词自动回复。")
 
 async def cancel(update, context):
     if update.message:
@@ -71,7 +75,7 @@ async def back_to_menu_callback(update, context):
     )
     return ConversationHandler.END
 
-# 新增：群聊选择后弹出功能菜单
+# 群聊选择后弹出功能菜单
 async def select_group_callback(update, context):
     query = update.callback_query
     group_id = int(query.data.replace("set_group_", ""))
@@ -82,18 +86,18 @@ async def select_group_callback(update, context):
         reply_markup=group_feature_menu(group_id)
     )
 
-# 新增：功能菜单分流 handler
+# 功能菜单分流 handler
 async def group_keywords_entry(update, context):
     query = update.callback_query
     group_id = int(query.data.replace("group_", "").replace("_keywords", ""))
-    # 这里进入关键词回复管理界面。可替换为实际的关键词管理逻辑。
-    await query.edit_message_text(
-        f"【群聊 {GROUPS.get(group_id, group_id)}】\n\n关键词回复管理功能开发中…"
-    )
+    # 进入关键词管理界面，把当前群聊id传递给管理菜单
+    context.user_data["selected_group_id"] = group_id
+    await keywords_setting_entry(update, context)
 
 async def group_schedule_entry(update, context):
     query = update.callback_query
     group_id = int(query.data.replace("group_", "").replace("_schedule", ""))
+    context.user_data["selected_group_id"] = group_id
     schedules = await fetch_schedules(group_id)
     group_name = GROUPS.get(group_id) or str(group_id)
     await query.edit_message_text(
@@ -105,6 +109,25 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("关键词", keywords_setting_entry))
+
+    # 关键词相关按钮和菜单
+    application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
+    application.add_handler(CallbackQueryHandler(kw_add_start, pattern="^kw_add$"))
+    application.add_handler(CallbackQueryHandler(kw_remove, pattern="^kw_remove$"))
+    application.add_handler(CallbackQueryHandler(kw_remove_confirm, pattern=r"^kw_remove_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_enable, pattern="^kw_enable$"))
+    application.add_handler(CallbackQueryHandler(kw_enable_confirm, pattern=r"^kw_enable_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_disable, pattern="^kw_disable$"))
+    application.add_handler(CallbackQueryHandler(kw_disable_confirm, pattern=r"^kw_disable_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_delay, pattern=r"^kw_delay_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_\d+$"))
+
+    # 私聊关键词添加流程
+    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT, kw_add_receive))
+
+    # 群聊自动关键词回复
+    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
     conv = ConversationHandler(
         entry_points=[
@@ -125,7 +148,6 @@ def main():
             CallbackQueryHandler(toggle_remove_last, pattern=r"^toggle_remove_last_\d+$"),
             CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"),
             CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"),
-            # 返回按钮
             CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
         ],
         states={
