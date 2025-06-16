@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+import datetime
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
@@ -29,18 +30,15 @@ from modules.keywords_reply import (
     kw_edit, kw_edit_entry, kw_edit_save
 )
 from telegram.error import BadRequest
-import datetime
 
 logging.basicConfig(level=logging.INFO)
-
-# ===== 1. 新增返回上一级、主菜单通用回调 =====
 
 async def back_to_prev_callback(update, context):
     group_id = context.user_data.get("selected_group_id")
     group_name = GROUPS.get(group_id, str(group_id))
     await update.callback_query.edit_message_text(
         f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        reply_markup=group_feature_menu(group_id)
+        reply_markup=group_feature_menu(group_id, group_name=group_name)
     )
 
 async def main_menu_callback(update, context):
@@ -49,18 +47,14 @@ async def main_menu_callback(update, context):
         reply_markup=group_select_menu(GROUPS)
     )
 
-# ===== 2. 入口相关 =====
-
 async def start(update, context):
     await update.message.reply_text(
         "欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /keyword 可管理关键词自动回复。"
     )
 
-# 入口，先选择群聊
 async def schedule_entry(update, context):
     await update.message.reply_text("请选择群聊：", reply_markup=group_select_menu(GROUPS))
 
-# 群聊选择后弹功能菜单
 async def select_group_callback(update, context):
     query = update.callback_query
     group_id = int(query.data.replace("set_group_", ""))
@@ -68,10 +62,9 @@ async def select_group_callback(update, context):
     group_name = GROUPS.get(group_id, str(group_id))
     await query.edit_message_text(
         f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        reply_markup=group_feature_menu(group_id)
+        reply_markup=group_feature_menu(group_id, group_name=group_name)
     )
 
-# 功能菜单分流 handler
 async def group_keywords_entry(update, context):
     query = update.callback_query
     group_id = int(query.data.replace("group_", "").replace("_keywords", ""))
@@ -84,12 +77,11 @@ async def group_schedule_entry(update, context):
     context.user_data["selected_group_id"] = group_id
     schedules = await fetch_schedules(group_id)
     group_name = GROUPS.get(group_id) or str(group_id)
+    now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     await query.edit_message_text(
-        f"⏰ [{group_name}] 定时消息列表：\n点击条目可设置。\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"⏰【{group_name} 定时消息管理】\n时间：{now_str}\n（此页可管理所有定时消息）",
         reply_markup=schedule_list_menu(schedules, group_name=group_name)
     )
-
-# ===== 3. 其它通用辅助 =====
 
 async def cancel(update, context):
     if update.message:
@@ -135,20 +127,16 @@ async def back_to_menu_callback(update, context):
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # 入口：/start /schedule
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule_entry))
 
-    # 先选群聊，再选功能（全局分流，勿放入会话）
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
     application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"))
     application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"))
 
-    # 通用菜单回退
     application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
 
-    # 关键词相关 handler
     application.add_handler(CommandHandler("keyword", keywords_setting_entry))
     application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
     application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
@@ -167,7 +155,6 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_edit_save))
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
-    # 定时消息相关 handler（仅流程相关在会话，分流按钮只全局注册）
     conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
@@ -237,7 +224,6 @@ def main():
 
     async def on_startup(app):
         await init_db()
-        # 让关键词管理模块可以方便获取群聊名
         app.bot_data["GROUPS"] = GROUPS
         logging.info("数据库初始化完成")
         global bg_task
