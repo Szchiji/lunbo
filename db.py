@@ -353,6 +353,27 @@ async def update_keyword_delay(chat_id, keyword, delay):
     except Exception as e:
         print(f"[update_keyword_delay] ERROR: {e}", flush=True)
 
+async def update_keyword_reply(chat_id, keyword, reply):
+    print(f"[update_keyword_reply] chat_id={chat_id}, keyword={keyword}, reply={reply}", flush=True)
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE keywords SET reply=$1 WHERE chat_id=$2 AND keyword=$3",
+                    reply, chat_id, keyword
+                )
+            await pool.close()
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute(
+                    "UPDATE keywords SET reply=? WHERE chat_id=? AND keyword=?",
+                    (reply, chat_id, keyword)
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[update_keyword_reply] ERROR: {e}", flush=True)
+
 # ========================
 # 数据库初始化
 # ========================
