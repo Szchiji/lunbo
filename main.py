@@ -70,9 +70,6 @@ async def group_schedule_entry(update, context):
         reply_markup=schedule_list_menu(schedules)
     )
 
-# 关键词管理与定时消息管理的回调与原有一致
-# ConversationHandler 只处理定时消息的增删改查，不负责入口（入口统一先分流）
-
 async def cancel(update, context):
     if update.message:
         await update.message.reply_text("已取消操作。")
@@ -117,11 +114,11 @@ async def back_to_menu_callback(update, context):
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # 入口：/schedule 先选择群聊
+    # 入口：/start /schedule
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule_entry))
 
-    # 先选群聊，再选功能
+    # 先选群聊，再选功能（全局分流，勿放入会话）
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
     application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"))
     application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"))
@@ -145,7 +142,7 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_edit_save))
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
-    # 定时消息相关 handler（用ConversationHandler管理流程）
+    # 定时消息相关 handler（仅流程相关在会话，分流按钮只全局注册）
     conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^添加定时消息$"), entry_add_schedule),
@@ -165,11 +162,6 @@ def main():
             CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
         ],
         states={
-            SELECT_GROUP: [
-                CallbackQueryHandler(select_group_callback, pattern="^set_group_"),
-                CallbackQueryHandler(group_keywords_entry, pattern=r"^group_\d+_keywords$"),
-                CallbackQueryHandler(group_schedule_entry, pattern=r"^group_\d+_schedule$"),
-            ],
             ADD_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_text)],
             ADD_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), add_media)],
             ADD_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), add_button)],
