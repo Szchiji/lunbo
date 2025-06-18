@@ -25,6 +25,7 @@ from modules.scheduler import (
 from scheduled_sender import scheduled_sender
 from modules.keyboards import schedule_list_menu, group_feature_menu, group_select_menu
 from modules.keywords_reply import (
+    KW_ADD, KW_EDIT,
     keywords_setting_entry, kw_add_start, kw_add_receive, kw_remove, kw_remove_confirm, kw_enable, kw_enable_confirm,
     kw_disable, kw_disable_confirm, kw_delay, kw_delayset_confirm, kw_back, keyword_autoreply,
     kw_edit, kw_edit_entry, kw_edit_save
@@ -129,6 +130,8 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule_entry))
+    application.add_handler(CommandHandler("keyword", keywords_setting_entry))
+    application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
 
     # 群聊选择和功能菜单
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
@@ -137,24 +140,8 @@ def main():
     application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
 
-    # 关键词自动回复相关（仅用正则或命令，不用全局文本 handler！）
-    application.add_handler(CommandHandler("keyword", keywords_setting_entry))
-    application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
-    application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
-    application.add_handler(CallbackQueryHandler(kw_add_start, pattern="^kw_add$"))
-    application.add_handler(CallbackQueryHandler(kw_remove, pattern="^kw_remove$"))
-    application.add_handler(CallbackQueryHandler(kw_remove_confirm, pattern=r"^kw_remove_"))
-    application.add_handler(CallbackQueryHandler(kw_enable, pattern="^kw_enable$"))
-    application.add_handler(CallbackQueryHandler(kw_enable_confirm, pattern=r"^kw_enable_"))
-    application.add_handler(CallbackQueryHandler(kw_disable, pattern="^kw_disable$"))
-    application.add_handler(CallbackQueryHandler(kw_disable_confirm, pattern=r"^kw_disable_"))
-    application.add_handler(CallbackQueryHandler(kw_delay, pattern=r"^kw_delay_\d+$"))
-    application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_"))
-    application.add_handler(CallbackQueryHandler(kw_edit, pattern="^kw_edit$"))
-    application.add_handler(CallbackQueryHandler(kw_edit_entry, pattern=r"^kw_edit_"))
-
-    # ConversationHandler：定时消息多步流程（只有多步相关入口！）
-    conv = ConversationHandler(
+    # ==== 定时消息 ConversationHandler ====
+    schedule_conv = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
@@ -186,34 +173,13 @@ def main():
                 MessageHandler(filters.TEXT & (~filters.COMMAND), add_confirm),
                 CallbackQueryHandler(confirm_callback)
             ],
-            EDIT_TEXT: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
-            EDIT_MEDIA: [
-                MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), edit_media_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
-            EDIT_BUTTON: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
-            EDIT_REPEAT: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
-            EDIT_PERIOD: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
-            EDIT_START_DATE: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
-            EDIT_END_DATE: [
-                MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
-            ],
+            EDIT_TEXT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save)],
+            EDIT_MEDIA: [MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), edit_media_save)],
+            EDIT_BUTTON: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save)],
+            EDIT_REPEAT: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save)],
+            EDIT_PERIOD: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save)],
+            EDIT_START_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date_save)],
+            EDIT_END_DATE: [MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date_save)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
@@ -221,9 +187,38 @@ def main():
         ],
         allow_reentry=True
     )
-    application.add_handler(conv)
+    application.add_handler(schedule_conv)
 
-    # === 【关键新增：群聊关键词自动回复】 ===
+    # ==== 关键词管理 ConversationHandler ====
+    keyword_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(kw_add_start, pattern="^kw_add$"),
+            CallbackQueryHandler(kw_edit, pattern="^kw_edit$"),
+            CallbackQueryHandler(kw_edit_entry, pattern=r"^kw_edit_"),
+        ],
+        states={
+            KW_ADD: [MessageHandler(filters.TEXT & (~filters.COMMAND), kw_add_receive)],
+            KW_EDIT: [MessageHandler(filters.TEXT & (~filters.COMMAND), kw_edit_save)],
+        },
+        fallbacks=[
+            CallbackQueryHandler(keywords_setting_entry, pattern="^back_to_prev$"),
+            CallbackQueryHandler(keywords_setting_entry, pattern="^main_menu$"),
+        ],
+        allow_reentry=True
+    )
+    application.add_handler(keyword_conv)
+
+    # 关键词管理其它相关Button
+    application.add_handler(CallbackQueryHandler(kw_remove, pattern="^kw_remove$"))
+    application.add_handler(CallbackQueryHandler(kw_remove_confirm, pattern=r"^kw_remove_"))
+    application.add_handler(CallbackQueryHandler(kw_enable, pattern="^kw_enable$"))
+    application.add_handler(CallbackQueryHandler(kw_enable_confirm, pattern=r"^kw_enable_"))
+    application.add_handler(CallbackQueryHandler(kw_disable, pattern="^kw_disable$"))
+    application.add_handler(CallbackQueryHandler(kw_disable_confirm, pattern=r"^kw_disable_"))
+    application.add_handler(CallbackQueryHandler(kw_delay, pattern=r"^kw_delay_\d+$"))
+    application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_"))
+
+    # 群内自动回复（仅限群！）
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
     async def on_startup(app):
