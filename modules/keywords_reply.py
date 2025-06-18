@@ -287,7 +287,7 @@ async def keyword_autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for item in kws:
         if not item.get("enabled", True):
             continue
-        if item["fuzzy"] and item["keyword"] in text:
+        if item.get("fuzzy") and item["keyword"] in text:
             m = await update.message.reply_text(item["reply"])
             delay = int(item.get("delay", 0))
             if delay > 0:
@@ -297,7 +297,7 @@ async def keyword_autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
             break
-        elif not item["fuzzy"] and item["keyword"] == text:
+        elif not item.get("fuzzy") and item["keyword"] == text:
             m = await update.message.reply_text(item["reply"])
             delay = int(item.get("delay", 0))
             if delay > 0:
