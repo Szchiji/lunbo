@@ -180,8 +180,40 @@ async def delete_schedule(schedule_id):
         print(f"[delete_schedule] ERROR: {e}", flush=True)
 
 # ========================
-# 关键词回复相关（同你原版，略）
-# ...（略）
+# 关键词回复相关
+# ========================
+
+async def init_keywords_table():
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                CREATE TABLE IF NOT EXISTS keywords (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    keyword TEXT,
+                    reply TEXT,
+                    enable INTEGER DEFAULT 1,
+                    delay INTEGER DEFAULT 0
+                )
+                """)
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute("""
+                CREATE TABLE IF NOT EXISTS keywords (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    keyword TEXT,
+                    reply TEXT,
+                    enable INTEGER DEFAULT 1,
+                    delay INTEGER DEFAULT 0
+                )
+                """)
+                await db.commit()
+    except Exception as e:
+        print(f"[init_keywords_table] ERROR: {e}", flush=True)
+
 # ========================
 # 数据库初始化
 # ========================
