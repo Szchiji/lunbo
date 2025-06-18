@@ -1,6 +1,6 @@
 import asyncio
 import datetime
-from db import fetch_schedules, update_schedule_multi, fetch_schedule
+from db import fetch_schedules, update_schedule_multi
 from modules.send_media import send_media, delete_message, pin_message
 
 def parse_time_period(time_period: str):
@@ -49,10 +49,7 @@ def check_in_date(now: datetime.datetime, start_date: str, end_date: str):
         return True
 
 async def scheduled_sender(application, group_ids):
-    """定时消息后台推送任务"""
-    # 每个 schedule_id -> 最后推送时间
-    last_sent = {}
-
+    """定时消息后台推送任务（推荐用数据库last_sent_time字段控制周期）"""
     while True:
         now = datetime.datetime.now()
         for group_id in group_ids:
@@ -68,14 +65,22 @@ async def scheduled_sender(application, group_ids):
                     # 检查日期范围
                     if not check_in_date(now, sch.get("start_date", ""), sch.get("end_date", "")):
                         continue
-                    # 检查周期
                     repeat_sec = sch.get("repeat_seconds", 0)
                     sid = sch["id"]
-                    last = last_sent.get(sid, None)
-                    # 取数据库的 last_sent_time 字段更稳妥（这里直接用内存字典）
-                    if repeat_sec > 0 and last and (now - last).total_seconds() < repeat_sec:
-                        continue
-                    # 推送
+
+                    # ========== 关键点 ==========
+                    # 从数据库字段读取last_sent_time（类型建议为字符串或datetime）
+                    last_sent_time = sch.get("last_sent_time")
+                    if repeat_sec > 0 and last_sent_time:
+                        if isinstance(last_sent_time, str):
+                            try:
+                                last_sent_time = datetime.datetime.fromisoformat(last_sent_time)
+                            except Exception:
+                                last_sent_time = None
+                        if last_sent_time and (now - last_sent_time).total_seconds() < repeat_sec:
+                            continue
+
+                    # 推送内容
                     text = sch.get("text", "")
                     media_url = sch.get("media_url", "")
                     media_type = sch.get("media_type", "")
@@ -105,10 +110,13 @@ async def scheduled_sender(application, group_ids):
                             await pin_message(application.bot, group_id, msg.message_id)
                         except Exception as e:
                             print(f"[scheduled_sender] 置顶失败: {e}")
-                    # 更新最后推送消息ID
+                    # 更新最后推送消息ID和推送时间
                     if msg:
-                        await update_schedule_multi(sid, last_message_id=msg.message_id)
-                        last_sent[sid] = now
+                        await update_schedule_multi(
+                            sid,
+                            last_message_id=msg.message_id,
+                            last_sent_time=now.isoformat()
+                        )
                 except Exception as e:
                     print(f"[scheduled_sender] 定时消息推送异常: {e}")
         await asyncio.sleep(60)
