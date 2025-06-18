@@ -40,7 +40,6 @@ async def start(update, context):
 
 async def schedule_entry(update, context):
     await update.message.reply_text("请选择群聊：", reply_markup=group_select_menu(GROUPS))
-    return SELECT_GROUP
 
 async def select_group_callback(update, context):
     query = update.callback_query
@@ -51,7 +50,6 @@ async def select_group_callback(update, context):
         f"已选择群聊：{group_name}\n请选择要管理的功能：",
         reply_markup=group_feature_menu(group_id, group_name=group_name)
     )
-    return ConversationHandler.END
 
 async def group_keywords_entry(update, context):
     query = update.callback_query
@@ -139,7 +137,7 @@ def main():
     application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
 
-    # 关键词自动回复相关
+    # 关键词自动回复相关（仅用正则或命令，不用全局文本 handler！）
     application.add_handler(CommandHandler("keyword", keywords_setting_entry))
     application.add_handler(MessageHandler(filters.Regex(r"^/?关键词$"), keywords_setting_entry))
     application.add_handler(CallbackQueryHandler(keywords_setting_entry, pattern="^kw_back$"))
@@ -154,14 +152,11 @@ def main():
     application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_"))
     application.add_handler(CallbackQueryHandler(kw_edit, pattern="^kw_edit$"))
     application.add_handler(CallbackQueryHandler(kw_edit_entry, pattern=r"^kw_edit_"))
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_add_receive))
-    application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_edit_save))
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
+    # 不要全局 MessageHandler(filters.TEXT...)
 
-    # ConversationHandler：定时消息（多步流程，仅这里注册！）
+    # ConversationHandler：定时消息多步流程（只有多步相关入口！）
     conv = ConversationHandler(
         entry_points=[
-            CommandHandler("schedule", schedule_entry),
             CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
             CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
