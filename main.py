@@ -33,20 +33,6 @@ from telegram.error import BadRequest
 
 logging.basicConfig(level=logging.INFO)
 
-async def back_to_prev_callback(update, context):
-    group_id = context.user_data.get("selected_group_id")
-    group_name = GROUPS.get(group_id, str(group_id))
-    await update.callback_query.edit_message_text(
-        f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        reply_markup=group_feature_menu(group_id, group_name=group_name)
-    )
-
-async def main_menu_callback(update, context):
-    await update.callback_query.edit_message_text(
-        "请选择群聊：\n\n操作时间：{}".format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
-        reply_markup=group_select_menu(GROUPS)
-    )
-
 async def start(update, context):
     await update.message.reply_text(
         "欢迎使用定时消息管理 Bot，可发送 /schedule 查看和编辑定时消息。\n发送 /keyword 可管理关键词自动回复。"
@@ -61,7 +47,7 @@ async def select_group_callback(update, context):
     group_id = int(query.data.replace("set_group_", ""))
     context.user_data["selected_group_id"] = group_id
     group_name = GROUPS.get(group_id, str(group_id))
-    # === 【关键改动】弹功能菜单 ===
+    # 弹功能菜单（功能菜单须含“添加定时消息”按钮，callback_data="add_schedule"）
     await query.edit_message_text(
         f"已选择群聊：{group_name}\n请选择要管理的功能：",
         reply_markup=group_feature_menu(group_id, group_name=group_name)
@@ -127,17 +113,30 @@ async def back_to_menu_callback(update, context):
     )
     return ConversationHandler.END
 
+async def back_to_prev_callback(update, context):
+    group_id = context.user_data.get("selected_group_id")
+    group_name = GROUPS.get(group_id, str(group_id))
+    await update.callback_query.edit_message_text(
+        f"已选择群聊：{group_name}\n请选择要管理的功能：\n\n操作时间：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        reply_markup=group_feature_menu(group_id, group_name=group_name)
+    )
+
+async def main_menu_callback(update, context):
+    await update.callback_query.edit_message_text(
+        "请选择群聊：\n\n操作时间：{}".format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+        reply_markup=group_select_menu(GROUPS)
+    )
+
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("schedule", schedule_entry))
 
-    # 群聊选择后弹功能菜单
+    # 群聊选择和功能菜单
     application.add_handler(CallbackQueryHandler(select_group_callback, pattern="^set_group_"))
     application.add_handler(CallbackQueryHandler(group_keywords_entry, pattern=r"^group_-?\d+_keywords$"))
     application.add_handler(CallbackQueryHandler(group_schedule_entry, pattern=r"^group_-?\d+_schedule$"))
-
     application.add_handler(CallbackQueryHandler(back_to_prev_callback, pattern="^back_to_prev$"))
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
 
@@ -160,10 +159,11 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_edit_save))
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
+    # ConversationHandler：定时消息（包括添加、编辑等多步流程）
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("schedule", schedule_entry),
-            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),  # 仅“添加定时消息”按钮进入流程
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
             CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
             CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"),
@@ -176,7 +176,7 @@ def main():
             CallbackQueryHandler(toggle_remove_last, pattern=r"^toggle_remove_last_\d+$"),
             CallbackQueryHandler(toggle_pin, pattern=r"^toggle_pin_\d+$"),
             CallbackQueryHandler(delete_schedule_callback, pattern=r"^delete_\d+$"),
-            CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$'),
+            CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$"),
         ],
         states={
             SELECT_GROUP: [
@@ -195,36 +195,36 @@ def main():
             ],
             EDIT_TEXT: [
                 MessageHandler(filters.TEXT & (~filters.COMMAND), edit_text_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
             EDIT_MEDIA: [
                 MessageHandler((filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT) & (~filters.COMMAND), edit_media_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
             EDIT_BUTTON: [
                 MessageHandler(filters.TEXT & (~filters.COMMAND), edit_button_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
             EDIT_REPEAT: [
                 MessageHandler(filters.TEXT & (~filters.COMMAND), edit_repeat_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
             EDIT_PERIOD: [
                 MessageHandler(filters.TEXT & (~filters.COMMAND), edit_period_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
             EDIT_START_DATE: [
                 MessageHandler(filters.TEXT & (~filters.COMMAND), edit_start_date_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
             EDIT_END_DATE: [
                 MessageHandler(filters.TEXT & (~filters.COMMAND), edit_end_date_save),
-                CallbackQueryHandler(back_to_menu_callback, pattern='^back_to_menu$')
+                CallbackQueryHandler(back_to_menu_callback, pattern="^back_to_menu$")
             ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
-            CallbackQueryHandler(cancel_callback, pattern='^cancel$'),
+            CallbackQueryHandler(cancel_callback, pattern="^cancel$"),
         ],
         allow_reentry=True
     )
