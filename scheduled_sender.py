@@ -1,100 +1,114 @@
 import asyncio
-from datetime import datetime, time as dtime
-from db import fetch_schedules, update_schedule_last_message_id
-from telegram.constants import ParseMode
-from modules.sender import send_media, delete_message, pin_message
+import datetime
+from db import fetch_schedules, update_schedule_multi, fetch_schedule
+from modules.send_media import send_media, delete_message, pin_message
 
-last_sent = {}
-
-def _in_time_period(period: str, now: datetime):
-    if not period:
-        return True
+def parse_time_period(time_period: str):
+    """解析时间段字符串，返回起止时间（时分）元组"""
+    if not time_period:
+        return None, None
     try:
-        start_str, end_str = period.split('-')
-        start = dtime.fromisoformat(start_str)
-        end = dtime.fromisoformat(end_str)
-        now_time = now.time()
-        if start <= end:
-            return start <= now_time <= end
-        else:
-            return now_time >= start or now_time <= end
+        start_str, end_str = time_period.split("-")
+        start_h, start_m = map(int, start_str.split(":"))
+        end_h, end_m = map(int, end_str.split(":"))
+        return (start_h, start_m), (end_h, end_m)
+    except Exception:
+        return None, None
+
+def check_in_period(now: datetime.datetime, time_period: str):
+    """判断当前时间是否在指定时段内"""
+    if not time_period:
+        return True
+    (start, end) = parse_time_period(time_period)
+    if not start or not end:
+        return True
+    now_min = now.hour * 60 + now.minute
+    start_min = start[0] * 60 + start[1]
+    end_min = end[0] * 60 + end[1]
+    if start_min <= end_min:
+        return start_min <= now_min < end_min
+    else:
+        # 跨天
+        return now_min >= start_min or now_min < end_min
+
+def check_in_date(now: datetime.datetime, start_date: str, end_date: str):
+    """判断当前日期是否在有效日期范围内"""
+    fmt = "%Y-%m-%d %H:%M"
+    fmt2 = "%Y-%m-%d"
+    try:
+        if start_date:
+            sd = datetime.datetime.strptime(start_date, fmt if " " in start_date else fmt2)
+            if now < sd:
+                return False
+        if end_date:
+            ed = datetime.datetime.strptime(end_date, fmt if " " in end_date else fmt2)
+            if now > ed:
+                return False
+        return True
     except Exception:
         return True
 
-def _in_date_range(start_date: str, end_date: str, now: datetime):
-    fmt = "%Y-%m-%d %H:%M"
-    fmt_short = "%Y-%m-%d"
-    def parse(dt):
-        if not dt or dt in ["不限", ""]:
-            return None
-        try:
-            return datetime.strptime(dt, fmt)
-        except Exception:
-            try:
-                return datetime.strptime(dt, fmt_short)
-            except Exception:
-                return None
-    start = parse(start_date)
-    end = parse(end_date)
-    if start and now < start:
-        return False
-    if end and now > end:
-        return False
-    return True
+async def scheduled_sender(application, group_ids):
+    """定时消息后台推送任务"""
+    # 每个 schedule_id -> 最后推送时间
+    last_sent = {}
 
-async def scheduled_sender(app, target_chat_ids):
-    print("定时消息调度器启动，目标:", target_chat_ids)
     while True:
-        now = datetime.now()
-        for chat_id in target_chat_ids:
-            try:
-                schedules = await fetch_schedules(chat_id)
-            except Exception as e:
-                print(f"查询群/频道 {chat_id} 的定时消息失败: {e}")
-                continue
+        now = datetime.datetime.now()
+        for group_id in group_ids:
+            schedules = await fetch_schedules(group_id)
             for sch in schedules:
-                if sch.get("status", 1) != 1:
-                    continue
-                schedule_id = sch["id"]
-                repeat = sch.get("repeat_seconds", 0) or 60
-                period = sch.get("time_period", "")
-                if not _in_time_period(period, now):
-                    continue
-                if not _in_date_range(sch.get("start_date", ""), sch.get("end_date", ""), now):
-                    continue
-                last = last_sent.get(schedule_id)
-                if last and (now - last).total_seconds() < repeat:
-                    continue
                 try:
+                    # 检查启用状态
+                    if not sch.get("status"):
+                        continue
+                    # 检查时间段
+                    if not check_in_period(now, sch.get("time_period", "")):
+                        continue
+                    # 检查日期范围
+                    if not check_in_date(now, sch.get("start_date", ""), sch.get("end_date", "")):
+                        continue
+                    # 检查周期
+                    repeat_sec = sch.get("repeat_seconds", 0)
+                    sid = sch["id"]
+                    last = last_sent.get(sid, None)
+                    # 取数据库的 last_sent_time 字段更稳妥（这里直接用内存字典）
+                    if repeat_sec > 0 and last and (now - last).total_seconds() < repeat_sec:
+                        continue
+                    # 推送
                     text = sch.get("text", "")
-                    media = sch.get("media_url", "")
-                    media_type = sch.get("media_type", None)
+                    media_url = sch.get("media_url", "")
+                    media_type = sch.get("media_type", "")
                     button_text = sch.get("button_text", "")
                     button_url = sch.get("button_url", "")
-                    markup = None
+                    buttons = None
                     if button_text and button_url:
                         from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-                        markup = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=button_url)]])
+                        buttons = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=button_url)]])
                     # 删除上一条
-                    if sch.get("remove_last"):
-                        last_msg_id = sch.get("last_message_id")
-                        if last_msg_id:
-                            await delete_message(app.bot, chat_id, last_msg_id)
-                    # 发送消息
+                    if sch.get("remove_last") and sch.get("last_message_id"):
+                        try:
+                            await delete_message(application.bot, group_id, sch["last_message_id"])
+                        except Exception as e:
+                            print(f"[scheduled_sender] 删除上一条失败: {e}")
                     msg = None
-                    if media:
-                        msg = await send_media(app.bot, chat_id, media, caption=text, buttons=markup, media_type=media_type)
-                        if not msg and text:
-                            msg = await app.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
-                    elif text:
-                        msg = await app.bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode=ParseMode.HTML)
+                    if media_url:
+                        msg = await send_media(application.bot, group_id, media_url, caption=text, buttons=buttons, media_type=media_type)
+                    else:
+                        if buttons:
+                            msg = await application.bot.send_message(chat_id=group_id, text=text, reply_markup=buttons)
+                        else:
+                            msg = await application.bot.send_message(chat_id=group_id, text=text)
                     # 置顶
                     if msg and sch.get("pin"):
-                        await pin_message(app.bot, chat_id, msg.message_id)
-                    # 更新 last_message_id
+                        try:
+                            await pin_message(application.bot, group_id, msg.message_id)
+                        except Exception as e:
+                            print(f"[scheduled_sender] 置顶失败: {e}")
+                    # 更新最后推送消息ID
                     if msg:
-                        await update_schedule_last_message_id(schedule_id, msg.message_id)
-                    last_sent[schedule_id] = now
+                        await update_schedule_multi(sid, last_message_id=msg.message_id)
+                        last_sent[sid] = now
                 except Exception as e:
-                    print(f"定时消息发送到 {chat_id} 失败: {e}")
-        await asyncio.sleep(10)
+                    print(f"[scheduled_sender] 定时消息推送异常: {e}")
+        await asyncio.sleep(60)
