@@ -152,7 +152,6 @@ def main():
     application.add_handler(CallbackQueryHandler(kw_delayset_confirm, pattern=r"^kw_delayset_"))
     application.add_handler(CallbackQueryHandler(kw_edit, pattern="^kw_edit$"))
     application.add_handler(CallbackQueryHandler(kw_edit_entry, pattern=r"^kw_edit_"))
-    # 不要全局 MessageHandler(filters.TEXT...)
 
     # ConversationHandler：定时消息多步流程（只有多步相关入口！）
     conv = ConversationHandler(
@@ -223,6 +222,9 @@ def main():
         allow_reentry=True
     )
     application.add_handler(conv)
+
+    # === 【关键新增：群聊关键词自动回复】 ===
+    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
     async def on_startup(app):
         await init_db()
