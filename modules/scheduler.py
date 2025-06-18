@@ -276,7 +276,7 @@ async def edit_text_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def edit_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = context.user_data.get("edit_schedule_id")
     new_text = update.message.text.strip()
-    await update_schedule_multi(schedule_id, text=new_text)
+    await update_schedule_multi(schedule_id, text=new_text, last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['text'] == new_text:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 文本已成功修改。")
@@ -308,7 +308,7 @@ async def edit_media_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.message.text and update.message.text.strip().lower() != "无":
         media = update.message.text.strip()
         media_type = ""
-    await update_schedule_multi(schedule_id, media_url=media, media_type=media_type)
+    await update_schedule_multi(schedule_id, media_url=media, media_type=media_type, last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['media_url'] == media:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 媒体已成功修改。")
@@ -328,7 +328,7 @@ async def edit_button_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = context.user_data.get("edit_schedule_id")
     text = update.message.text.strip()
     if text.lower() == "无":
-        await update_schedule_multi(schedule_id, button_text="", button_url="")
+        await update_schedule_multi(schedule_id, button_text="", button_url="", last_sent_time=None)
         sch = await fetch_schedule(schedule_id)
         if sch and not sch['button_text'] and not sch['button_url']:
             await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 按钮已删除。")
@@ -340,7 +340,7 @@ async def edit_button_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text("格式错误，请用英文逗号隔开，如：按钮文字,https://xxx.com。")
         return EDIT_BUTTON
-    await update_schedule_multi(schedule_id, button_text=btn_text.strip(), button_url=btn_url.strip())
+    await update_schedule_multi(schedule_id, button_text=btn_text.strip(), button_url=btn_url.strip(), last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['button_text'] == btn_text.strip() and sch['button_url'] == btn_url.strip():
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 按钮已修改。")
@@ -363,7 +363,7 @@ async def edit_repeat_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         await update.message.reply_text("请输入整数分钟数。")
         return EDIT_REPEAT
-    await update_schedule_multi(schedule_id, repeat_seconds=minutes*60)
+    await update_schedule_multi(schedule_id, repeat_seconds=minutes*60, last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['repeat_seconds'] == minutes*60:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 重复时间已修改。")
@@ -387,7 +387,7 @@ async def edit_period_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif not re.match(r"^\d{2}:\d{2}-\d{2}:\d{2}$", period):
         await update.message.reply_text("格式错误，示例：09:00-18:00 或留空全天")
         return EDIT_PERIOD
-    await update_schedule_multi(schedule_id, time_period=period)
+    await update_schedule_multi(schedule_id, time_period=period, last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['time_period'] == period:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 时间段已修改。")
@@ -410,7 +410,7 @@ async def edit_start_date_save(update: Update, context: ContextTypes.DEFAULT_TYP
     if dt is None:
         await update.message.reply_text("格式错误，格式如 2025-06-12 或 2025-06-12 09:30，或留空不限。")
         return EDIT_START_DATE
-    await update_schedule_multi(schedule_id, start_date=dt)
+    await update_schedule_multi(schedule_id, start_date=dt, last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['start_date'] == dt:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 开始日期已修改。")
@@ -433,7 +433,7 @@ async def edit_end_date_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if dt is None:
         await update.message.reply_text("格式错误，格式如 2025-06-30 或 2025-06-30 23:59，或留空不限。")
         return EDIT_END_DATE
-    await update_schedule_multi(schedule_id, end_date=dt)
+    await update_schedule_multi(schedule_id, end_date=dt, last_sent_time=None)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['end_date'] == dt:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 结束日期已修改。")
@@ -446,7 +446,7 @@ async def toggle_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
     sch = await fetch_schedule(schedule_id)
     new_status = 0 if sch.get("status") else 1
-    await update_schedule_multi(schedule_id, status=new_status)
+    await update_schedule_multi(schedule_id, status=new_status, last_sent_time=None)
     sch2 = await fetch_schedule(schedule_id)
     msg = "✅ 已启用" if sch2 and sch2.get("status") else "⛔ 已关闭"
     await update.callback_query.answer(msg)
@@ -457,7 +457,7 @@ async def toggle_remove_last(update: Update, context: ContextTypes.DEFAULT_TYPE)
     schedule_id = int(update.callback_query.data.split("_")[-1])
     sch = await fetch_schedule(schedule_id)
     new_val = 0 if sch.get("remove_last") else 1
-    await update_schedule_multi(schedule_id, remove_last=new_val)
+    await update_schedule_multi(schedule_id, remove_last=new_val, last_sent_time=None)
     sch2 = await fetch_schedule(schedule_id)
     msg = "✅ 删除上一条：已开" if sch2 and sch2.get("remove_last") else "⛔ 删除上一条：已关"
     await update.callback_query.answer(msg)
@@ -468,7 +468,7 @@ async def toggle_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = int(update.callback_query.data.split("_")[-1])
     sch = await fetch_schedule(schedule_id)
     new_val = 0 if sch.get("pin") else 1
-    await update_schedule_multi(schedule_id, pin=new_val)
+    await update_schedule_multi(schedule_id, pin=new_val, last_sent_time=None)
     sch2 = await fetch_schedule(schedule_id)
     msg = "✅ 置顶：已开" if sch2 and sch2.get("pin") else "⛔ 置顶：已关"
     await update.callback_query.answer(msg)
