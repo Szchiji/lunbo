@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes, ConversationHandler
 import db
@@ -64,6 +63,7 @@ async def keywords_setting_entry(update: Update, context: ContextTypes.DEFAULT_T
     group_id = get_current_group_id(context, update)
     group_name = get_group_name(context, group_id)
     kws = await db.fetch_keywords(group_id)
+    import datetime
     now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     text = (
         f"📝【{group_name} 关键词管理】\n"
@@ -145,9 +145,6 @@ async def kw_remove_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
     keyword = update.callback_query.data.replace("kw_remove_", "")
     await db.remove_keyword(group_id, keyword)
-    await keywords_setting_entry(update, context)
-
-async def kw_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await keywords_setting_entry(update, context)
 
 async def kw_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
