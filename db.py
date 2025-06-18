@@ -95,6 +95,25 @@ async def add_schedule(chat_id, text, media_url='', media_type='', button_text='
 # 兼容 create_schedule 用法
 create_schedule = add_schedule
 
+async def create_schedule_by_dict(chat_id, sch: dict):
+    # 保证和 add_schedule 参数兼容
+    return await add_schedule(
+        chat_id,
+        sch.get('text', ''),
+        sch.get('media_url', ''),
+        sch.get('media_type', ''),
+        sch.get('button_text', ''),
+        sch.get('button_url', ''),
+        sch.get('repeat_seconds', 0),
+        sch.get('time_period', ''),
+        sch.get('start_date', ''),
+        sch.get('end_date', ''),
+        sch.get('status', 1),
+        sch.get('remove_last', 0),
+        sch.get('pin', 0),
+        sch.get('last_message_id')
+    )
+
 async def update_schedule(schedule_id, sch):
     try:
         if USE_PG:
@@ -194,6 +213,7 @@ async def init_keywords_table():
                     chat_id BIGINT NOT NULL,
                     keyword TEXT,
                     reply TEXT,
+                    fuzzy INTEGER DEFAULT 0,
                     enable INTEGER DEFAULT 1,
                     delay INTEGER DEFAULT 0
                 )
@@ -206,6 +226,7 @@ async def init_keywords_table():
                     chat_id INTEGER NOT NULL,
                     keyword TEXT,
                     reply TEXT,
+                    fuzzy INTEGER DEFAULT 0,
                     enable INTEGER DEFAULT 1,
                     delay INTEGER DEFAULT 0
                 )
@@ -233,20 +254,20 @@ async def fetch_keywords(chat_id):
         print(f"[fetch_keywords] ERROR: {e}", flush=True)
         return []
 
-async def add_keyword(chat_id, keyword, reply, enable=1, delay=0):
+async def add_keyword(chat_id, keyword, reply, fuzzy=0, enable=1, delay=0):
     try:
         if USE_PG:
             pool = await _pg_conn()
             async with pool.acquire() as conn:
                 await conn.execute(
-                    "INSERT INTO keywords (chat_id, keyword, reply, enable, delay) VALUES ($1, $2, $3, $4, $5)",
-                    chat_id, keyword, reply, enable, delay
+                    "INSERT INTO keywords (chat_id, keyword, reply, fuzzy, enable, delay) VALUES ($1, $2, $3, $4, $5, $6)",
+                    chat_id, keyword, reply, fuzzy, enable, delay
                 )
         else:
             async with _sqlite_conn() as db:
                 await db.execute(
-                    "INSERT INTO keywords (chat_id, keyword, reply, enable, delay) VALUES (?, ?, ?, ?, ?)",
-                    (chat_id, keyword, reply, enable, delay)
+                    "INSERT INTO keywords (chat_id, keyword, reply, fuzzy, enable, delay) VALUES (?, ?, ?, ?, ?, ?)",
+                    (chat_id, keyword, reply, fuzzy, enable, delay)
                 )
                 await db.commit()
     except Exception as e:
@@ -288,6 +309,42 @@ async def update_keyword(keyword_id, **kwargs):
                 await db.commit()
     except Exception as e:
         print(f"[update_keyword] ERROR: {e}", flush=True)
+
+# ========================
+# 关键词业务层常用接口（业务方便调用）
+# ========================
+
+async def remove_keyword(group_id, keyword):
+    kws = await fetch_keywords(group_id)
+    for k in kws:
+        if k['keyword'] == keyword:
+            await delete_keyword(k['id'])
+            return True
+    return False
+
+async def update_keyword_enable(group_id, keyword, enable):
+    kws = await fetch_keywords(group_id)
+    for k in kws:
+        if k['keyword'] == keyword:
+            await update_keyword(k['id'], enable=enable)
+            return True
+    return False
+
+async def update_keyword_delay(group_id, keyword, delay):
+    kws = await fetch_keywords(group_id)
+    for k in kws:
+        if k['keyword'] == keyword:
+            await update_keyword(k['id'], delay=delay)
+            return True
+    return False
+
+async def update_keyword_reply(group_id, keyword, reply):
+    kws = await fetch_keywords(group_id)
+    for k in kws:
+        if k['keyword'] == keyword:
+            await update_keyword(k['id'], reply=reply)
+            return True
+    return False
 
 # ========================
 # 数据库初始化
