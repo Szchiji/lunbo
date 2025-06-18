@@ -92,6 +92,9 @@ async def add_schedule(chat_id, text, media_url='', media_type='', button_text='
     except Exception as e:
         print(f"[add_schedule] ERROR: {e}", flush=True)
 
+# 兼容 create_schedule 用法
+create_schedule = add_schedule
+
 async def update_schedule(schedule_id, sch):
     try:
         if USE_PG:
