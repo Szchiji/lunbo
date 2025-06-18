@@ -1,8 +1,11 @@
 import asyncio
 import datetime
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 import db
+
+KW_ADD = 500
+KW_EDIT = 501
 
 def build_keywords_text(kws, group_name=""):
     if not kws:
@@ -69,7 +72,7 @@ async def keywords_setting_entry(update: Update, context: ContextTypes.DEFAULT_T
         build_keywords_text(kws, group_name)
     )
     kb = keyword_setting_menu()
-    if update.callback_query:
+    if getattr(update, "callback_query", None):
         await update.callback_query.edit_message_text(text, reply_markup=kb)
     else:
         await update.message.reply_text(text, reply_markup=kb)
@@ -83,12 +86,16 @@ async def kw_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("主菜单", callback_data="main_menu")]
         ])
     )
+    return KW_ADD
 
 async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
     step = context.user_data.get("kw_add_step")
     if step == "keyword":
         kw = update.message.text.strip()
+        if not kw:
+            await update.message.reply_text("关键词不能为空，请重新输入：")
+            return KW_ADD
         context.user_data["kw_new_keyword"] = kw
         context.user_data["kw_add_step"] = "reply"
         await update.message.reply_text(
@@ -98,17 +105,21 @@ async def kw_add_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("主菜单", callback_data="main_menu")]
             ])
         )
-        return
+        return KW_ADD
     elif step == "reply":
         kw = context.user_data.get("kw_new_keyword")
         reply = update.message.text.strip()
-        fuzzy = kw.startswith("*")
+        if not reply:
+            await update.message.reply_text("回复内容不能为空，请重新输入：")
+            return KW_ADD
+        fuzzy = 1 if kw.startswith("*") else 0
         keyword = kw.lstrip("*")
-        await db.add_keyword(group_id, keyword, reply, int(fuzzy), 1, 0)
-        await keywords_setting_entry(update, context)
+        await db.add_keyword(group_id, keyword, reply, fuzzy, 1, 0)
+        await update.message.reply_text(f"已添加关键词：{'*' if fuzzy else ''}{keyword}")
         context.user_data.pop("kw_add_step", None)
         context.user_data.pop("kw_new_keyword", None)
-        return
+        await keywords_setting_entry(update, context)
+        return ConversationHandler.END
 
 async def kw_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -263,6 +274,7 @@ async def kw_edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("主菜单", callback_data="main_menu")]
         ])
     )
+    return KW_EDIT
 
 async def kw_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = get_current_group_id(context, update)
@@ -270,13 +282,17 @@ async def kw_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fuzzy = context.user_data.get("kw_edit_fuzzy", 0)
     if not keyword:
         await update.message.reply_text("未选择关键词。")
-        return
+        return ConversationHandler.END
     reply = update.message.text.strip()
+    if not reply:
+        await update.message.reply_text("回复内容不能为空，请重新输入：")
+        return KW_EDIT
     await db.update_keyword_reply(group_id, keyword, reply)
     await update.message.reply_text("修改成功！")
     context.user_data.pop("kw_edit_keyword", None)
     context.user_data.pop("kw_edit_fuzzy", None)
     await keywords_setting_entry(update, context)
+    return ConversationHandler.END
 
 async def keyword_autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = update.effective_chat.id
