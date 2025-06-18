@@ -92,11 +92,8 @@ async def add_schedule(chat_id, text, media_url='', media_type='', button_text='
     except Exception as e:
         print(f"[add_schedule] ERROR: {e}", flush=True)
 
-# 兼容 create_schedule 用法
-create_schedule = add_schedule
-
-async def create_schedule_by_dict(chat_id, sch: dict):
-    # 保证和 add_schedule 参数兼容
+# 用于兼容 dict 类型参数。此函数很关键，确保业务端调用 create_schedule(group_id, sch) 能写入。
+async def create_schedule(chat_id, sch: dict):
     return await add_schedule(
         chat_id,
         sch.get('text', ''),
