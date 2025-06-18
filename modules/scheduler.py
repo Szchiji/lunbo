@@ -1,5 +1,4 @@
 import re
-import traceback
 from db import (
     fetch_schedules, fetch_schedule, create_schedule,
     update_schedule_multi, delete_schedule
@@ -40,6 +39,29 @@ def parse_datetime_input(text):
     if m2:
         return text
     return None
+
+async def show_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, schedule_id: int, notice: str = ""):
+    sch = await fetch_schedule(schedule_id)
+    group_id = sch['chat_id'] if sch else None
+    group_name = GROUPS.get(group_id, str(group_id)) if group_id else ""
+    text = f"【定时消息设置】\nID: {schedule_id}\n群：{group_name}\n"
+    if sch:
+        text += (
+            f"状态：{'启用' if sch.get('status') else '禁用'}\n"
+            f"文本：{sch.get('text', '')}\n"
+            f"媒体：{'有' if sch.get('media_url') else '无'}\n"
+            f"按钮：{sch.get('button_text', '') or '无'}\n"
+            f"重复：{sch.get('repeat_seconds', 0)//60}分钟\n"
+            f"时间段：{sch.get('time_period', '全天')}\n"
+            f"日期：{sch.get('start_date', '--')} ~ {sch.get('end_date', '--')}\n"
+        )
+    if notice:
+        text = f"{notice}\n\n{text}"
+    kb = schedule_edit_menu(sch, group_name) if sch else None
+    if getattr(update, "message", None):
+        await update.message.reply_text(text, reply_markup=kb)
+    elif getattr(update, "callback_query", None):
+        await update.callback_query.edit_message_text(text, reply_markup=kb)
 
 @admin_only
 async def show_schedule_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,15 +128,21 @@ async def add_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def add_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     media = ""
+    media_type = ""
     if update.message.video:
         media = update.message.video.file_id
+        media_type = "video"
     elif update.message.photo:
         media = update.message.photo[-1].file_id
+        media_type = "photo"
     elif update.message.document:
         media = update.message.document.file_id
+        media_type = "document"
     elif update.message.text and update.message.text.strip().lower() != "无":
         media = update.message.text.strip()
+        media_type = ""
     context.user_data['new_schedule']['media_url'] = media
+    context.user_data['new_schedule']['media_type'] = media_type
     await update.message.reply_text("请输入按钮文字和链接，用英文逗号分隔，如：更多内容,https://example.com\n如无需按钮请输入“无”：")
     return ADD_BUTTON
 
@@ -267,15 +295,20 @@ async def edit_media_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def edit_media_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_id = context.user_data.get("edit_schedule_id")
     media = ""
+    media_type = ""
     if update.message.video:
         media = update.message.video.file_id
+        media_type = "video"
     elif update.message.photo:
         media = update.message.photo[-1].file_id
+        media_type = "photo"
     elif update.message.document:
         media = update.message.document.file_id
+        media_type = "document"
     elif update.message.text and update.message.text.strip().lower() != "无":
         media = update.message.text.strip()
-    await update_schedule_multi(schedule_id, media_url=media)
+        media_type = ""
+    await update_schedule_multi(schedule_id, media_url=media, media_type=media_type)
     sch = await fetch_schedule(schedule_id)
     if sch and sch['media_url'] == media:
         await show_edit_menu(update, context, schedule_id=schedule_id, notice="✅ 媒体已成功修改。")
