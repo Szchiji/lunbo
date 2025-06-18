@@ -47,7 +47,6 @@ async def select_group_callback(update, context):
     group_id = int(query.data.replace("set_group_", ""))
     context.user_data["selected_group_id"] = group_id
     group_name = GROUPS.get(group_id, str(group_id))
-    # 弹功能菜单（功能菜单须含“添加定时消息”按钮，callback_data="add_schedule"）
     await query.edit_message_text(
         f"已选择群聊：{group_name}\n请选择要管理的功能：",
         reply_markup=group_feature_menu(group_id, group_name=group_name)
@@ -159,11 +158,11 @@ def main():
     application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & (~filters.COMMAND), kw_edit_save))
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.GROUPS, keyword_autoreply))
 
-    # ConversationHandler：定时消息（包括添加、编辑等多步流程）
+    # ConversationHandler：定时消息（多步流程，仅这里注册！）
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("schedule", schedule_entry),
-            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),  # 仅“添加定时消息”按钮进入流程
+            CallbackQueryHandler(entry_add_schedule, pattern="^add_schedule$"),
             CallbackQueryHandler(edit_menu_entry, pattern=r"^edit_menu_\d+$"),
             CallbackQueryHandler(edit_text_entry, pattern=r"^edit_text_\d+$"),
             CallbackQueryHandler(edit_media_entry, pattern=r"^edit_media_\d+$"),
