@@ -4,7 +4,11 @@ from config import POSTGRES_DSN
 
 DB_PATH = "schedules.db"
 USE_PG = bool(POSTGRES_DSN)
-PG_POOL = None
+PG_POOL = None  # 全局 Postgres 连接池
+
+# ------------------------
+# 连接池管理与初始化
+# ------------------------
 
 async def _sqlite_conn():
     return await aiosqlite.connect(DB_PATH)
@@ -17,6 +21,10 @@ async def _pg_conn():
         )
     return PG_POOL
 
+# ========================
+# 定时消息相关
+# ========================
+
 async def fetch_schedules(chat_id):
     try:
         if USE_PG:
@@ -27,7 +35,8 @@ async def fetch_schedules(chat_id):
         else:
             async with _sqlite_conn() as db:
                 db.row_factory = aiosqlite.Row
-                cursor = await db.execute("SELECT * FROM schedules WHERE chat_id=? ORDER BY id DESC", (chat_id,))
+                cursor = await db.execute(
+                    "SELECT * FROM schedules WHERE chat_id=? ORDER BY id DESC", (chat_id,))
                 rows = await cursor.fetchall()
                 await cursor.close()
                 return [dict(row) for row in rows]
@@ -45,7 +54,8 @@ async def fetch_schedule(schedule_id):
         else:
             async with _sqlite_conn() as db:
                 db.row_factory = aiosqlite.Row
-                cursor = await db.execute("SELECT * FROM schedules WHERE id=?", (schedule_id,))
+                cursor = await db.execute(
+                    "SELECT * FROM schedules WHERE id=?", (schedule_id,))
                 row = await cursor.fetchone()
                 await cursor.close()
                 return dict(row) if row else None
@@ -84,6 +94,40 @@ async def create_schedule(chat_id, sch):
                 await db.commit()
     except Exception as e:
         print(f"[create_schedule] ERROR: {e}", flush=True)
+
+async def update_schedule(schedule_id, sch):
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE schedules SET 
+                    text=$1, media_url=$2, media_type=$3, button_text=$4, button_url=$5, repeat_seconds=$6, time_period=$7, start_date=$8, end_date=$9, status=$10, remove_last=$11, pin=$12, last_message_id=$13
+                    WHERE id=$14
+                """,
+                sch.get('text', ''), sch.get('media_url', ''), sch.get('media_type', ''),
+                sch.get('button_text', ''), sch.get('button_url', ''),
+                sch.get('repeat_seconds', 0), sch.get('time_period', ''),
+                sch.get('start_date', ''), sch.get('end_date', ''),
+                sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0), sch.get('last_message_id'),
+                schedule_id)
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute("""UPDATE schedules SET 
+                    text=?, media_url=?, media_type=?, button_text=?, button_url=?, repeat_seconds=?, time_period=?, start_date=?, end_date=?, status=?, remove_last=?, pin=?, last_message_id=?
+                    WHERE id=?""",
+                    (
+                        sch.get('text', ''), sch.get('media_url', ''), sch.get('media_type', ''),
+                        sch.get('button_text', ''), sch.get('button_url', ''),
+                        sch.get('repeat_seconds', 0), sch.get('time_period', ''),
+                        sch.get('start_date', ''), sch.get('end_date', ''),
+                        sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0), sch.get('last_message_id'),
+                        schedule_id
+                    )
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[update_schedule] ERROR: {e}", flush=True)
 
 async def update_schedule_multi(schedule_id, **kwargs):
     if not kwargs:
@@ -135,6 +179,13 @@ async def delete_schedule(schedule_id):
     except Exception as e:
         print(f"[delete_schedule] ERROR: {e}", flush=True)
 
+# ========================
+# 关键词回复相关（同你原版，略）
+# ...（略）
+# ========================
+# 数据库初始化
+# ========================
+
 async def init_db():
     try:
         if USE_PG:
@@ -181,5 +232,7 @@ async def init_db():
                 )
                 """)
                 await db.commit()
+        # 关键词表初始化
+        await init_keywords_table()
     except Exception as e:
         print(f"[init_db] ERROR: {e}", flush=True)
