@@ -214,6 +214,25 @@ async def init_keywords_table():
     except Exception as e:
         print(f"[init_keywords_table] ERROR: {e}", flush=True)
 
+async def fetch_keywords(chat_id):
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch("SELECT * FROM keywords WHERE chat_id=$1 ORDER BY id DESC", chat_id)
+            return [dict(row) for row in rows]
+        else:
+            async with _sqlite_conn() as db:
+                db.row_factory = aiosqlite.Row
+                cursor = await db.execute(
+                    "SELECT * FROM keywords WHERE chat_id=? ORDER BY id DESC", (chat_id,))
+                rows = await cursor.fetchall()
+                await cursor.close()
+                return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"[fetch_keywords] ERROR: {e}", flush=True)
+        return []
+
 # ========================
 # 数据库初始化
 # ========================
