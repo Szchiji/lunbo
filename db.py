@@ -3,7 +3,6 @@ import asyncpg
 from config import POSTGRES_DSN
 
 DB_PATH = "data.db"
-
 USE_PG = bool(POSTGRES_DSN)
 PG_POOL = None  # 全局 Postgres 连接池
 
@@ -72,9 +71,152 @@ async def fetch_schedule(schedule_id):
         print(f"[fetch_schedule] ERROR: {e}", flush=True)
         return None
 
-# ... add_schedule, create_schedule, update_schedule, update_schedule_multi,
-# update_schedule_last_message_id, delete_schedule omitted for brevity ...
+async def add_schedule(chat_id, text, media_url='', media_type='', button_text='', button_url='',
+                      repeat_seconds=0, time_period='', start_date='', end_date='',
+                      status=1, remove_last=0, pin=0, last_message_id=None):
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO schedules 
+                    (chat_id, text, media_url, media_type, button_text, button_url, repeat_seconds, time_period, start_date, end_date, status, remove_last, pin, last_message_id)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                """, chat_id, text, media_url, media_type, button_text, button_url,
+                     repeat_seconds, time_period, start_date, end_date,
+                     status, remove_last, pin, last_message_id)
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute("""
+                    INSERT INTO schedules 
+                    (chat_id, text, media_url, media_type, button_text, button_url, repeat_seconds, time_period, start_date, end_date, status, remove_last, pin, last_message_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    chat_id, text, media_url, media_type, button_text, button_url,
+                    repeat_seconds, time_period, start_date, end_date,
+                    status, remove_last, pin, last_message_id
+                ))
+                await db.commit()
+    except Exception as e:
+        print(f"[add_schedule] ERROR: {e}", flush=True)
 
+async def create_schedule(chat_id: int, sch: dict):
+    """
+    Wrapper to add a schedule from a dict. The dict sch can contain keys:
+    text, media_url, media_type, button_text, button_url,
+    repeat_seconds, time_period, start_date, end_date,
+    status, remove_last, pin, last_message_id.
+    """
+    return await add_schedule(
+        chat_id,
+        sch.get('text', ''),
+        sch.get('media_url', ''),
+        sch.get('media_type', ''),
+        sch.get('button_text', ''),
+        sch.get('button_url', ''),
+        sch.get('repeat_seconds', 0),
+        sch.get('time_period', ''),
+        sch.get('start_date', ''),
+        sch.get('end_date', ''),
+        sch.get('status', 1),
+        sch.get('remove_last', 0),
+        sch.get('pin', 0),
+        sch.get('last_message_id')
+    )
+
+async def update_schedule(schedule_id, sch: dict):
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE schedules SET 
+                    text=$1, media_url=$2, media_type=$3, button_text=$4, button_url=$5, 
+                    repeat_seconds=$6, time_period=$7, start_date=$8, end_date=$9, 
+                    status=$10, remove_last=$11, pin=$12, last_message_id=$13
+                    WHERE id=$14
+                """,
+                sch.get('text', ''), sch.get('media_url', ''), sch.get('media_type', ''),
+                sch.get('button_text', ''), sch.get('button_url', ''),
+                sch.get('repeat_seconds', 0), sch.get('time_period', ''),
+                sch.get('start_date', ''), sch.get('end_date', ''),
+                sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
+                sch.get('last_message_id'), schedule_id)
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute("""
+                    UPDATE schedules SET 
+                        text=?, media_url=?, media_type=?, button_text=?, button_url=?, 
+                        repeat_seconds=?, time_period=?, start_date=?, end_date=?, 
+                        status=?, remove_last=?, pin=?, last_message_id=?
+                    WHERE id=?
+                """, (
+                    sch.get('text', ''), sch.get('media_url', ''), sch.get('media_type', ''),
+                    sch.get('button_text', ''), sch.get('button_url', ''),
+                    sch.get('repeat_seconds', 0), sch.get('time_period', ''),
+                    sch.get('start_date', ''), sch.get('end_date', ''),
+                    sch.get('status', 1), sch.get('remove_last', 0), sch.get('pin', 0),
+                    sch.get('last_message_id'), schedule_id
+                ))
+                await db.commit()
+    except Exception as e:
+        print(f"[update_schedule] ERROR: {e}", flush=True)
+
+async def update_schedule_multi(schedule_id, **kwargs):
+    if not kwargs:
+        return
+    keys = list(kwargs.keys())
+    vals = list(kwargs.values())
+    try:
+        if USE_PG:
+            set_clause = ", ".join(f"{k}=${i+1}" for i, k in enumerate(keys))
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    f"UPDATE schedules SET {set_clause} WHERE id=${len(vals)+1}",
+                    *vals, schedule_id
+                )
+        else:
+            set_clause = ", ".join(f"{k}=?" for k in keys)
+            vals.append(schedule_id)
+            sql = f"UPDATE schedules SET {set_clause} WHERE id=?"
+            async with _sqlite_conn() as db:
+                await db.execute(sql, vals)
+                await db.commit()
+    except Exception as e:
+        print(f"[update_schedule_multi] ERROR: {e}", flush=True)
+
+async def update_schedule_last_message_id(schedule_id, message_id):
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE schedules SET last_message_id=$1 WHERE id=$2",
+                    message_id, schedule_id
+                )
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute(
+                    "UPDATE schedules SET last_message_id=? WHERE id=?",
+                    (message_id, schedule_id)
+                )
+                await db.commit()
+    except Exception as e:
+        print(f"[update_schedule_last_message_id] ERROR: {e}", flush=True)
+
+async def delete_schedule(schedule_id):
+    try:
+        if USE_PG:
+            pool = await _pg_conn()
+            async with pool.acquire() as conn:
+                await conn.execute("DELETE FROM schedules WHERE id=$1", schedule_id)
+        else:
+            async with _sqlite_conn() as db:
+                await db.execute("DELETE FROM schedules WHERE id=?", (schedule_id,))
+                await db.commit()
+    except Exception as e:
+        print(f"[delete_schedule] ERROR: {e}", flush=True)
 
 # ========================
 # 关键词回复相关
@@ -145,11 +287,11 @@ async def add_keyword(chat_id: int, keyword: str, reply: str,
                     INSERT INTO keywords
                       (chat_id, keyword, reply, fuzzy, enabled, delay)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (chat_id, keyword) DO
-                      UPDATE SET reply=EXCLUDED.reply,
-                                 fuzzy=EXCLUDED.fuzzy,
-                                 enabled=EXCLUDED.enabled,
-                                 delay=EXCLUDED.delay
+                    ON CONFLICT (chat_id, keyword) DO UPDATE
+                      SET reply=EXCLUDED.reply,
+                          fuzzy=EXCLUDED.fuzzy,
+                          enabled=EXCLUDED.enabled,
+                          delay=EXCLUDED.delay
                     """,
                     chat_id, keyword, reply, fuzzy, enabled, delay
                 )
@@ -248,25 +390,26 @@ async def update_keyword_reply(chat_id: int, keyword: str, reply: str):
 # ========================
 async def init_db():
     try:
+        # schedules 表
         if USE_PG:
             pool = await _pg_conn()
             async with pool.acquire() as conn:
                 await conn.execute("""
                 CREATE TABLE IF NOT EXISTS schedules (
-                    id             SERIAL PRIMARY KEY,
-                    chat_id        BIGINT   NOT NULL,
-                    text           TEXT,
-                    media_url      TEXT,
-                    media_type     TEXT,
-                    button_text    TEXT,
-                    button_url     TEXT,
-                    repeat_seconds INTEGER,
-                    time_period    TEXT,
-                    start_date     TEXT,
-                    end_date       TEXT,
-                    status         INTEGER  DEFAULT 1,
-                    remove_last    INTEGER  DEFAULT 0,
-                    pin            INTEGER  DEFAULT 0,
+                    id              SERIAL PRIMARY KEY,
+                    chat_id         BIGINT   NOT NULL,
+                    text            TEXT,
+                    media_url       TEXT,
+                    media_type      TEXT,
+                    button_text     TEXT,
+                    button_url      TEXT,
+                    repeat_seconds  INTEGER,
+                    time_period     TEXT,
+                    start_date      TEXT,
+                    end_date        TEXT,
+                    status          INTEGER  DEFAULT 1,
+                    remove_last     INTEGER  DEFAULT 0,
+                    pin             INTEGER  DEFAULT 0,
                     last_message_id BIGINT
                 )
                 """)
@@ -293,7 +436,7 @@ async def init_db():
                 """)
                 await db.commit()
 
-        # 关键词表
+        # keywords 表
         await init_keywords_table()
 
     except Exception as e:
